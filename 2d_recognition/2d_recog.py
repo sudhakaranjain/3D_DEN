@@ -1,5 +1,4 @@
 import tensorflow as tf
-from tensorflow.examples.tutorials.mnist import input_data
 import gzip
 import cv2 as cv
 import os
@@ -7,16 +6,8 @@ import numpy as np
 
 class DEN():
 
-	# def __init__(self):
-	# 	# mnist = input_data.read_data_sets("../mnist/", one_hot=True)
-	# 	tf.reset_default_graph()
-		 # self.network = keras.Sequential()
-		 # self.network.add(keras.layers.Conv2D(32, kernel_size=3, activation='relu', input_shape=(28,28,1)))
-		 # self.network.add(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=None, padding='valid', data_format=None))
-		 # self.network.add(keras.layers.Conv2D(64, kernel_size=3, activation='relu'))
-		 # self.network.add(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=None, padding='valid', data_format=None))
-		 # self.network.add(keras.layers.Flatten())
-		 # self.network.add(keras.layers.Dense(10, activation='softmax'))
+	def __init__(self):
+		self.last_label_index = 0
 
 	def extract_data(self, filepath):
 		data = []
@@ -38,8 +29,43 @@ class DEN():
 		data = np.array(data, dtype="float") / 255.0
 		# data = data.reshape(data.shape[0], 50, 50, 3)
 		data_labels = np.array(data_labels)
-		return [data, data_labels]
+		label_names = np.unique(data_labels)
+		# data_labels = tf.one_hot(indices=data_labels, depth=10)
+		return data, data_labels, label_names
 
+
+	def add_task(self, label_names, binary_output=True):
+
+
+		new_label_indices = []
+		new_train = []
+		new_train_labels = []
+		new_test = []
+		new_test_labels = []
+
+		if binary_output == False:
+			new_label_indices.append(label_names[self.last_label_index+1])
+			self.last_label_index = self.last_label_index + 1
+
+		else:
+			for i in range(no_of_labels):
+				new_label_indices.append(label_names[i])
+			self.last_label_index = i
+
+
+		for index in new_label_indices:
+			for data, label in zip(train_data, train_labels):
+				if label_names[index] == label:
+					new_train.append(data)
+					new_train_labels.append(label)
+
+			for data, label in zip(test_data, test_labels):
+				if label_names[index] == label:
+					new_test.append(data)
+					new_test_labels.append(label)
+
+		return [np.array(new_train), np.array(new_train_labels), 
+					np.array(new_test), np.array(new_test_labels)]
 
 	def weight_variable(self, shape):
 		initial = tf.truncated_normal(shape, stddev=0.1)
@@ -56,7 +82,9 @@ class DEN():
 		return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
 							strides=[1, 2, 2, 1], padding='SAME')
 
-	def create_model(self, x, keep_prob):
+	def create_model(self, x, keep_prob, prev_y_conv=None):
+
+		tf.reset_default_graph()
 
 		#First Convolutional Layer
 		W_conv1 = self.weight_variable([5, 5, 1, 32])
@@ -91,10 +119,11 @@ class DEN():
 
 		h_fc2 = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
 
-
-		# readout fc layer
-		W_fc3 = self.weight_variable([128, 10])
-		b_fc3 = self.bias_variable([10])
+		if prev_y_conv == None:
+			# readout fc layer
+			W_fc3 = self.weight_variable([128, 2])
+			b_fc3 = self.bias_variable([2])
+		else:
 
 		y_conv = tf.matmul(h_fc2, W_fc3) + b_fc3
 
@@ -110,8 +139,9 @@ if __name__ == "__main__":
 	np_test_path = '../Fruit_dataset/numpy_dataset/test.npy'
 	np_train_label_path = '../Fruit_dataset/numpy_dataset/train_labels.npy'
 	np_test_label_path = '../Fruit_dataset/numpy_dataset/test_labels.npy'
+	np_label_name_path = '../Fruit_dataset/numpy_dataset/label_names.npy'
 
-	batch_size = 64
+	batch_size = 10
 	epochs = 50
 
 	den = DEN()
@@ -123,17 +153,19 @@ if __name__ == "__main__":
 		train_labels = np.load(np_train_label_path)
 		test_data = np.load(np_test_path)
 		test_labels = np.load(np_test_label_path)
+		label_names = np.load(np_label_name_path)
 
 	else:
 
 		print("loading dataset from image files.......")
-		[train_data, train_labels] = den.extract_data(train_data_path)
-		[test_data, test_labels] = den.extract_data(test_data_path)
+		train_data, train_labels, label_names = den.extract_data(train_data_path)
+		test_data, test_labels, _ = den.extract_data(test_data_path)
 
 		np.save(np_train_path, train_data)
 		np.save(np_train_label_path, train_labels)
 		np.save(np_test_path, test_data)
 		np.save(np_test_label_path, test_labels)
+		np.save(np_label_name_path, label_names)
 
 
 # show image using cv
@@ -141,22 +173,35 @@ if __name__ == "__main__":
 	# cv.imshow("", train_data[512])
 	# cv.waitKey(0)
 
-	x = tf.placeholder(tf.float32, [None, 50, 50, 1])
-	y_ = tf.placeholder(tf.float32, [None,10])
+	x = tf.placeholder(tf.float32, [None, 50, 50, 3])
+	y_ = tf.placeholder(tf.float32, [None, 2])
 	keep_prob = tf.placeholder(tf.float32)
 
-	y_conv = den.create_model(x,keep_prob)
 
-	dataset = tf.data.Dataset.from_tensor_slices((train_data, train_labels))
-	dataset = dataset.repeat(epochs).batch(batch_size)
-	iterator = dataset.make_one_shot_iterator()
-	(x_data , y_data) = iterator.get_next()
+	for task_id in range(1, len(label_names)):
+
+		prev_y = y_conv
+
+
+		if task_id == 1:
+			[task_train, task_train_labels, task_test, task_test_labels] = den.add_task(label_names)
+			y_conv = den.create_model(task_id, x, keep_prob)
+
+		else:
+			task_train , task_labels = den.add_task(label_names, False)
+			y_conv = den.create_model(task_id, x, keep_prob, prev_y)			
+
+		dataset = tf.data.Dataset.from_tensor_slices((task_train task_labels))
+		dataset = dataset.repeat().batch(batch_size)
+		iterator = dataset.make_one_shot_iterator()
+		(x_data , y_data) = iterator.get_next()
+
 
 	with tf.Session() as sess:
 
 		cross_entropy = tf.reduce_mean(
 			tf.nn.softmax_cross_entropy_with_logits_v2(labels=y_, logits=y_conv))
-		train_model = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
+		train_model = tf.train.AdamOptimizer(1e-3).minimize(cross_entropy)
 		correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
 		accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 		sess.run(tf.global_variables_initializer())
