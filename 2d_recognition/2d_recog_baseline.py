@@ -184,22 +184,31 @@ if __name__ == "__main__":
 
 	if os.path.exists(np_train_path):
 
-		print("loading dataset from numpy files.......")
-		train_data = np.load(np_train_path)
+		print("..........loading dataset from numpy files..........")
+
+		with gzip.GzipFile(np_train_path, "r") as f:
+			train_data = np.load(f)
+		with gzip.GzipFile(np_test_path, "r") as f:
+			test_data = np.load(f)
+
 		train_labels = np.load(np_train_label_path)
-		test_data = np.load(np_test_path)
 		test_labels = np.load(np_test_label_path)
 		label_names = np.load(np_label_name_path)
 
 	else:
 
-		print("loading dataset from image files.......")
+		print("..........loading dataset from disk..........")
 		train_data, train_labels, label_names = den.extract_data(train_data_path)
 		test_data, test_labels, _ = den.extract_data(test_data_path)
 
-		np.save(np_train_path, train_data)
+		os.makedirs(os.path.dirname(np_train_path), exist_ok=True)
+
+		with gzip.GzipFile(np_train_path, "w") as f:
+			np.save(f, train_data)
+		with gzip.GzipFile(np_test_path, "w") as f:
+			np.save(f, test_data)
+
 		np.save(np_train_label_path, train_labels)
-		np.save(np_test_path, test_data)
 		np.save(np_test_label_path, test_labels)
 		np.save(np_label_name_path, label_names)
 

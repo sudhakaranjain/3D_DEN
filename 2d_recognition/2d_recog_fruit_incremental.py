@@ -153,8 +153,8 @@ if __name__ == "__main__":
 	test_data_path = '../Fruit_dataset/temp_Test'
 
 	# For easier disk read operation
-	np_train_path = '../Fruit_dataset/numpy_dataset/train.npy'
-	np_test_path = '../Fruit_dataset/numpy_dataset/test.npy'
+	np_train_path = '../Fruit_dataset/numpy_dataset/train.npy.gz'
+	np_test_path = '../Fruit_dataset/numpy_dataset/test.npy.gz'
 	np_train_label_path = '../Fruit_dataset/numpy_dataset/train_labels.npy'
 	np_test_label_path = '../Fruit_dataset/numpy_dataset/test_labels.npy'
 	np_label_name_path = '../Fruit_dataset/numpy_dataset/label_names.npy'
@@ -167,9 +167,13 @@ if __name__ == "__main__":
 	if os.path.exists(np_train_path):
 
 		print("..........loading dataset from numpy files..........")
-		train_data = np.load(np_train_path)
+
+		with gzip.GzipFile(np_train_path, "r") as f:
+			train_data = np.load(f)
+		with gzip.GzipFile(np_test_path, "r") as f:
+			test_data = np.load(f)
+
 		train_labels = np.load(np_train_label_path)
-		test_data = np.load(np_test_path)
 		test_labels = np.load(np_test_label_path)
 		label_names = np.load(np_label_name_path)
 
@@ -180,9 +184,13 @@ if __name__ == "__main__":
 		test_data, test_labels, _ = den.extract_data(test_data_path)
 
 		os.makedirs(os.path.dirname(np_train_path), exist_ok=True)
-		np.save(np_train_path, train_data)
+
+		with gzip.GzipFile(np_train_path, "w") as f:
+			np.save(f, train_data)
+		with gzip.GzipFile(np_test_path, "w") as f:
+			np.save(f, test_data)
+
 		np.save(np_train_label_path, train_labels)
-		np.save(np_test_path, test_data)
 		np.save(np_test_label_path, test_labels)
 		np.save(np_label_name_path, label_names)
 
