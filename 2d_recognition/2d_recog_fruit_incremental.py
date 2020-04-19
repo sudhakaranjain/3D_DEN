@@ -9,6 +9,10 @@ class DEN():
 	def __init__(self):
 		self.last_label_index = 0    # tracks the label index upto which the model has been trained
 		self.params = dict()
+		self.train = []
+		self.train_labels = []
+		self.test = []
+		self.test_labels = []
 		tf.reset_default_graph()
 
 
@@ -40,14 +44,13 @@ class DEN():
 
 	def add_task(self, task_id, label_names, initial_output=2):
 
-
 		new_label_indices = []
-		new_train = []
-		new_train_labels = []
-		new_test = []
-		new_test_labels = []
 
 		if task_id == 1:
+			self.train = []
+			self.train_labels = []
+			self.test = []
+			self.test_labels = []
 			for i in range(initial_output):   # By default, first task is a binary classification
 				new_label_indices.append(i)
 			self.last_label_index = i
@@ -60,16 +63,16 @@ class DEN():
 			print(" \n Added new category: "+str(label_names[index]))
 			for data, label in zip(train_data, train_labels):
 				if label_names[index] == label:
-					new_train.append(data)
-					new_train_labels.append(index) 
+					self.train.append(data)
+					self.train_labels.append(index) 
 
 			for data, label in zip(test_data, test_labels):
 				if label_names[index] == label:
-					new_test.append(data)
-					new_test_labels.append(index)
+					self.test.append(data)
+					self.test_labels.append(index)
 
-		return [np.array(new_train), np.array(new_train_labels), 
-					np.array(new_test), np.array(new_test_labels)]
+		return [np.array(self.train), np.array(self.train_labels), 
+					np.array(self.test), np.array(self.test_labels)]
 
 	# def weight_variable(self, task_id, shape, scope=None, trainable=True):
 	# 	with tf.variable_scope(scope, reuse=True):
@@ -207,40 +210,29 @@ if __name__ == "__main__":
 	y_conv = den.build_model(x, keep_prob, output_len=len(label_names))
 	task_id = 0
 
-	old_test = np.array([])
-	old_test_labels = np.array([])
+	while den.last_label_index != (len(label_names) - 1):
 
-	with tf.Session() as sess:
+		task_id += 1
+		# if task_id == 1:
+		# 	y_conv = den.build_model(task_id, x, keep_prob)
 
-		while den.last_label_index != (len(label_names) - 1):
+		[task_train, new_task_train_labels, task_test, new_task_test_labels] = den.add_task(task_id, label_names)
 
-			task_id += 1
-			# if task_id == 1:
-			# 	y_conv = den.build_model(task_id, x, keep_prob)
+		task_train_labels = tf.one_hot(indices=new_task_train_labels, depth=len(label_names))
+		task_test_labels = tf.one_hot(indices=new_task_test_labels, depth=len(label_names))					
 
-			[task_train, new_task_train_labels, task_test, new_task_test_labels] = den.add_task(task_id, label_names)
+		dataset = tf.data.Dataset.from_tensor_slices((task_train, task_train_labels))
+		dataset = dataset.shuffle(len(new_task_train_labels)).repeat().batch(batch_size)
+		iterator = dataset.make_one_shot_iterator()
+		(x_data , y_data) = iterator.get_next()
 
-			if task_id != 1:
-				task_train = np.concatenate((old_train, task_train))
-				new_task_train_labels = np.concatenate((old_train_labels, new_task_train_labels))
+		cross_entropy = tf.reduce_mean(
+			tf.nn.softmax_cross_entropy_with_logits_v2(labels=y_, logits=y_conv))
+		train_model = tf.train.AdamOptimizer(1e-5).minimize(cross_entropy)
+		correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
+		accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-				task_test = np.concatenate((old_test, task_test))
-				new_task_test_labels = np.concatenate((old_test_labels, new_task_test_labels))
-
-			task_train_labels = tf.one_hot(indices=new_task_train_labels, depth=len(label_names))
-			task_test_labels = tf.one_hot(indices=new_task_test_labels, depth=len(label_names))					
-
-			dataset = tf.data.Dataset.from_tensor_slices((task_train, task_train_labels))
-			dataset = dataset.shuffle(len(new_task_train_labels)).repeat().batch(batch_size)
-			iterator = dataset.make_one_shot_iterator()
-			(x_data , y_data) = iterator.get_next()
-
-			cross_entropy = tf.reduce_mean(
-				tf.nn.softmax_cross_entropy_with_logits_v2(labels=y_, logits=y_conv))
-			train_model = tf.train.AdamOptimizer(1e-5).minimize(cross_entropy)
-			correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
-			accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
+		with tf.Session() as sess:
 
 			sess.run(tf.global_variables_initializer())
 			task_test_labels = sess.run(task_test_labels)
@@ -266,8 +258,3 @@ if __name__ == "__main__":
 					if count > 3:
 						print("Best accuracy achieved! \n")
 						break
-
-			old_train = task_train
-			old_train_labels = new_task_train_labels
-			old_test = task_test
-			old_test_labels = new_task_test_labels

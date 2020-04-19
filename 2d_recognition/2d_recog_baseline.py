@@ -10,7 +10,12 @@ class DEN():
 		self.last_label_index = 0    # tracks the label index upto which the model has been trained
 		self.params = dict()
 		tf.reset_default_graph()
+		self.sess = None
 		self.h_pool2_flat = None
+		self.train = []
+		self.train_labels = []
+		self.test = []
+		self.test_labels = []
 		
 	def extract_data(self, filepath):
 		data = []
@@ -39,14 +44,14 @@ class DEN():
 
 	def add_task(self, task_id, label_names, initial_output=2):
 
-
 		new_label_indices = []
-		new_train = []
-		new_train_labels = []
-		new_test = []
-		new_test_labels = []
-
+		self.train = []
+		self.train_labels = []
+		
 		if task_id == 1:
+
+			self.test = []
+			self.test_labels = []
 			for i in range(initial_output):   # By default, first task is a binary classification
 				new_label_indices.append(i)
 			self.last_label_index = i
@@ -59,16 +64,17 @@ class DEN():
 			print(" \n Added new category: "+str(label_names[index]))
 			for data, label in zip(train_data, train_labels):
 				if label_names[index] == label:
-					new_train.append(data)
-					new_train_labels.append(index) 
+					self.train.append(data)
+					self.train_labels.append(index) 
 
 			for data, label in zip(test_data, test_labels):
 				if label_names[index] == label:
-					new_test.append(data)
-					new_test_labels.append(index)
+					self.test.append(data)
+					self.test_labels.append(index)
 
-		return [np.array(new_train), np.array(new_train_labels), 
-					np.array(new_test), np.array(new_test_labels)]
+
+	def destroy_graph(self):
+		tf.reset_default_graph()
 
 
 	def create_variable(self, name=None, shape, scope=None, trainable=True):
@@ -82,16 +88,6 @@ class DEN():
 				self.params[w.name] = w
 			return w
 
-	# def create_bias(self, task_id, shape, scope=None, trainable=True):
-
-	# 	if scope==None:
-	# 		initial = tf.constant(0.1, shape=shape)
-	# 		return tf.Variable(initial)
-	# 	else:
-	# 		with tf.variable_scope(scope):
-	# 			w = tf.get_variable("b_"+scope+"_"+str(task_id), shape, trainable=trainable)
-	# 			self.params[w.name] = w
-	# 		return w
 
 	def get_variable(self, name=None, shape, scope=None, trainable=True):
 
@@ -100,12 +96,11 @@ class DEN():
 				self.params[w.name] = w
 		return w
 
-	# def get_bias(self, shape, scope, trainable=True):
-	# 	with tf.variable_scope(scope):
-	# 			w = tf.get_variable("b_"+scope+"_"+str(task_id), shape, trainable=trainable)
-	# 			self.params[w.name] = w
-	# 	return w
-
+	def load_params(self):
+		vdict = dict()
+		for scope_name, ref_w in self.params.items():
+			vdict[scope_name] = self.sess.run(ref_w)
+		return vdict
 
 	def conv2d(self, x, W):
 		return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
@@ -114,30 +109,33 @@ class DEN():
 		return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
 							strides=[1, 2, 2, 1], padding='SAME')
 
-	def build_model(self, task_id, x, keep_prob, retraining=False, expansion=False, splitting=False):
+	def build_model(self, task_id, x, keep_prob, retraining=False, expansion=False, splitting=False, output_len=2):
 
 		# Note: scope and name values are only given to DEN layers, not for fixed sized layers.
+		
+		self.sess = tf.Session()
+
+		#First Convolutional Layer
+		W_conv1 = self.get_variable(name="w",shape=[5, 5, 3, 32],scope="conv1")
+		b_conv1 = self.get_variable(name="b",shape=[32],scope="conv1")
+
+		h_conv1 = tf.nn.relu(self.conv2d(x, W_conv1) + b_conv1)
+		h_pool1 = self.max_pool_2x2(h_conv1)
+
+		#Second Convolutional Layer
+		W_conv2 = self.get_variable(name="w",shape=[5, 5, 32, 64],scope="conv2")
+		b_conv2 = self.get_variable(name="b",shape=[64],scope="conv2")
+
+		h_conv2 = tf.nn.relu(self.conv2d(h_pool1, W_conv2) + b_conv2)
+		h_pool2 = self.max_pool_2x2(h_conv2)
+		self.h_pool2_flat = tf.reshape(h_pool2, [-1, 15*15*64])
 
 		if retraining:
 		elif expansion:
+
 		elif splitting:
 
 		else:
-
-			#First Convolutional Layer
-			W_conv1 = self.get_variable(name="w",shape=[5, 5, 3, 32],scope="conv1")
-			b_conv1 = self.get_variable(name="b",shape=[32],scope="conv1")
-
-			h_conv1 = tf.nn.relu(self.conv2d(x, W_conv1) + b_conv1)
-			h_pool1 = self.max_pool_2x2(h_conv1)
-
-			#Second Convolutional Layer
-			W_conv2 = self.get_variable(name="w",shape=[5, 5, 32, 64],scope="conv2")
-			b_conv2 = self.get_variable(name="b",shape=[64],scope="conv2")
-
-			h_conv2 = tf.nn.relu(self.conv2d(h_pool1, W_conv2) + b_conv2)
-			h_pool2 = self.max_pool_2x2(h_conv2)
-			self.h_pool2_flat = tf.reshape(h_pool2, [-1, 15*15*64])
 
 			#flattened first fc layer
 			W_fc1 = self.get_variable(name="w_"+str(task_id), shape=[15 * 15 * 64, 1024], scope="l1")   # layer-1 outgoing weight matrix
@@ -162,17 +160,62 @@ class DEN():
 
 			return y_conv
 
-	def perform_training(self, task_id, )
+	def train_task(self, task_id, y_conv, y_, batch_size, epochs):
+
+		cross_entropy = tf.reduce_mean(
+			tf.nn.softmax_cross_entropy_with_logits_v2(labels=y_, logits=y_conv))
+		train_model = tf.train.AdamOptimizer(1e-5).minimize(cross_entropy)
+		correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
+		accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+		task_train_labels = tf.one_hot(indices=self.train_labels, depth=self.last_label_index+1)
+		task_test_labels = tf.one_hot(indices=self.test_labels, depth=len(label_names))					
+
+		dataset = tf.data.Dataset.from_tensor_slices((self.train, task_train_labels))
+		dataset = dataset.shuffle(len(task_train_labels)).repeat().batch(batch_size)
+		iterator = dataset.make_one_shot_iterator()
+		(x_data , y_data) = iterator.get_next()
+
+
+		self.sess.run(tf.global_variables_initializer())
+		task_test_labels = self.sess.run(task_test_labels)
+		task_train_labels = self.sess.run(task_train_labels)
+		count = 0
+
+		print("\n-------------Training new task: %d--------------\n"%task_id)
+		for i in range(epochs):
+
+			for j in range(int(len(self.train)/batch_size)):
+				x_batch , y_batch = self.sess.run([x_data,y_data])
+				self.sess.run(train_model, feed_dict={x: x_batch, y_: y_batch, keep_prob: 0.5})
+			
+			train_accuracy = accuracy.eval(feed_dict={x: self.train, y_: task_train_labels, keep_prob: 1.0})
+			print("Epoch %d, training accuracy %g"%(i+1, train_accuracy))
+
+			test_accuracy = accuracy.eval(feed_dict={x: self.test, y_: task_test_labels, keep_prob: 1.0})
+			print("test accuracy: %g \n"%test_accuracy)
+
+			if test_accuracy >= 0.99:
+				count += 1
+
+				if count > 3:
+					print("Best accuracy achieved! \n")
+					break
+
 
 
 if __name__ == "__main__":
 
-	train_data_path = '../Fruit_dataset/Train'
-	test_data_path = '../Fruit_dataset/Test'
+	# train_data_path = '../Fruit_dataset/Train'
+	# test_data_path = '../Fruit_dataset/Test'
+
+	# lesser categories for faster loading during testing the code
+	train_data_path = '../Fruit_dataset/temp_Train'
+	test_data_path = '../Fruit_dataset/temp_Test'
 
 	# For easier disk read operation
-	np_train_path = '../Fruit_dataset/numpy_dataset/train.npy'
-	np_test_path = '../Fruit_dataset/numpy_dataset/test.npy'
+	np_train_path = '../Fruit_dataset/numpy_dataset/train.npy.gz'
+	np_test_path = '../Fruit_dataset/numpy_dataset/test.npy.gz'
 	np_train_label_path = '../Fruit_dataset/numpy_dataset/train_labels.npy'
 	np_test_label_path = '../Fruit_dataset/numpy_dataset/test_labels.npy'
 	np_label_name_path = '../Fruit_dataset/numpy_dataset/label_names.npy'
@@ -227,68 +270,31 @@ if __name__ == "__main__":
 	splitting = False
 	task_id = 0
 
-	while den.last_label_index != (len(label_names) - 1):
+	while den.last_label_index != (len(label_names) - 1):        # Loop for adding new tasks (lifelong learning)
 
 		task_id += 1
+		existing_model = y_conv
+		den.add_task(task_id, label_names)
 
 		if task_id == 1:
 			y_conv = den.build_model(task_id, x, keep_prob, retraining, expansion, splitting)
-
+			result = den.train_task(task_id, y_conv, y_, batch_size, epochs)
 		else:
 			retraining=True
-			y_conv = den.build_model(task_id, x, keep_prob, retraining, expansion, splitting)
+			expansion = False
+			splitting = False
+			den.destroy_graph()
+			y_conv = den.build_model(task_id, x, keep_prob, retraining, expansion, splitting, den.last_label_index+1)
+			result = den.train_task(task_id, y_conv, y_, batch_size, epochs)
 
+			if result == False:
+				retraining = False
+				expansion = True
 
-			[task_train, new_task_train_labels, task_test, new_task_test_labels] = den.add_task(task_id, label_names)
+				y_conv = den.build_model(task_id, x, keep_prob, retraining, expansion, splitting, den.last_label_index+1)
+				result = den.train_task(task_id, y_conv, y_, batch_size, epochs)
 
-			if task_id != 1:
-				task_train = np.concatenate((old_train, task_train))
-				new_task_train_labels = np.concatenate((old_train_labels, new_task_train_labels))
-
-				task_test = np.concatenate((old_test, task_test))
-				new_task_test_labels = np.concatenate((old_test_labels, new_task_test_labels))
-
-			task_train_labels = tf.one_hot(indices=new_task_train_labels, depth=len(label_names))
-			task_test_labels = tf.one_hot(indices=new_task_test_labels, depth=len(label_names))					
-
-			dataset = tf.data.Dataset.from_tensor_slices((task_train, task_train_labels))
-			dataset = dataset.shuffle(len(new_task_train_labels)).repeat().batch(batch_size)
-			iterator = dataset.make_one_shot_iterator()
-			(x_data , y_data) = iterator.get_next()
-
-			cross_entropy = tf.reduce_mean(
-				tf.nn.softmax_cross_entropy_with_logits_v2(labels=y_, logits=y_conv))
-			train_model = tf.train.AdamOptimizer(1e-5).minimize(cross_entropy)
-			correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
-			accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
-
-			sess.run(tf.global_variables_initializer())
-			task_test_labels = sess.run(task_test_labels)
-			task_train_labels = sess.run(task_train_labels)
-			count = 0
-
-			print("\n-------------Training new task: %d--------------\n"%task_id)
-			for i in range(epochs):
-
-				for j in range(int(len(task_train)/batch_size)):
-					x_batch , y_batch = sess.run([x_data,y_data])
-					sess.run(train_model, feed_dict={x: x_batch, y_: y_batch, keep_prob: 0.5})
-				
-				train_accuracy = accuracy.eval(feed_dict={x:task_train, y_: task_train_labels, keep_prob: 1.0})
-				print("Epoch %d, training accuracy %g"%(i+1, train_accuracy))
-
-				test_accuracy = accuracy.eval(feed_dict={x: task_test, y_: task_test_labels, keep_prob: 1.0})
-				print("test accuracy: %g \n"%test_accuracy)
-
-				if test_accuracy >= 0.99:
-					count += 1
-
-					if count > 3:
-						print("Best accuracy achieved! \n")
-						break
-
-			old_train = task_train
-			old_train_labels = new_task_train_labels
-			old_test = task_test
-			old_test_labels = new_task_test_labels
+				if result == False:
+					retraining = False
+					expansion = False
+					splitting = True
