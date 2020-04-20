@@ -9,9 +9,10 @@ class DEN():
 	def __init__(self):
 		self.last_label_index = 0    # tracks the label index upto which the model has been trained
 		self.params = dict()
+		self.k_ex = 5
+		self.den_layers = 3
 		tf.reset_default_graph()
 		self.sess = None
-		self.h_pool2_flat = None
 		self.train = []
 		self.train_labels = []
 		self.test = []
@@ -77,26 +78,28 @@ class DEN():
 		tf.reset_default_graph()
 
 
-	def create_variable(self, name=None, shape, scope=None, trainable=True):
+	def get_variable(self, name=None, shape=None, scope=None, trainable=True):
 
-		if scope==None:
-			initial = tf.truncated_normal(shape, stddev=0.1)
-			return tf.Variable(initial)
+		if shape==None:
+			with tf.variable_scope(scope, reuse=True):
+				w = tf.get_variable(name, trainable=trainable)
 		else:
-			with tf.variable_scope(scope):
-				w = tf.get_variable(scope+"_"+str(name), shape, trainable=trainable)
-				self.params[w.name] = w
-			return w
+			with tf.variable_scope(scope, reuse=False):
+				w = tf.get_variable(name, shape, trainable=trainable)
 
-
-	def get_variable(self, name=None, shape, scope=None, trainable=True):
-
-		with tf.variable_scope(scope, reuse=tf.compat.v1.AUTO_REUSE):
-				w = tf.get_variable(scope+"_"+name, shape, trainable=trainable)
-				self.params[w.name] = w
+		self.params[w.name] = w
 		return w
 
-	def load_params(self):
+	def restore_params(self, param_values, trainable):
+		self.params = dict()
+		for scope_name, value in param_values.items():
+			scope_name = scope_name.split(':')[0]
+			[scope, name] = scope_name.split('/')
+			with tf.variable_scope(scope):
+				w = tf.get_variable(name, initializer=param_values[scope_name], trainable=trainable)
+			self.params[w.name] = w
+
+	def get_params(self):
 		vdict = dict()
 		for scope_name, ref_w in self.params.items():
 			vdict[scope_name] = self.sess.run(ref_w)
@@ -109,39 +112,78 @@ class DEN():
 		return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
 							strides=[1, 2, 2, 1], padding='SAME')
 
-	def build_model(self, task_id, x, keep_prob, retraining=False, expansion=False, splitting=False, output_len=2):
+	def build_model(self, task_id, retraining=False, expansion=False, splitting=False, output_len=2):
 
 		# Note: scope and name values are only given to DEN layers, not for fixed sized layers.
 		
 		self.sess = tf.Session()
 
-		#First Convolutional Layer
-		W_conv1 = self.get_variable(name="w",shape=[5, 5, 3, 32],scope="conv1")
-		b_conv1 = self.get_variable(name="b",shape=[32],scope="conv1")
-
-		h_conv1 = tf.nn.relu(self.conv2d(x, W_conv1) + b_conv1)
-		h_pool1 = self.max_pool_2x2(h_conv1)
-
-		#Second Convolutional Layer
-		W_conv2 = self.get_variable(name="w",shape=[5, 5, 32, 64],scope="conv2")
-		b_conv2 = self.get_variable(name="b",shape=[64],scope="conv2")
-
-		h_conv2 = tf.nn.relu(self.conv2d(h_pool1, W_conv2) + b_conv2)
-		h_pool2 = self.max_pool_2x2(h_conv2)
-		self.h_pool2_flat = tf.reshape(h_pool2, [-1, 15*15*64])
-
 		if retraining:
-		elif expansion:
+
+		if expansion:
+
+			param_values = self.get_params()
+			self.destroy_graph()
+			self.restore_params(param_values=param_values, trainable=True)
+
+			x = tf.placeholder(tf.float32, [None, 60, 60, 3])
+			y_ = tf.placeholder(tf.float32, [None, output_len])
+			keep_prob = tf.placeholder(tf.float32)
+
+			W_conv1 = self.get_variable(name="w",scope="conv1")
+			b_conv1 = self.get_variable(name="b",scope="conv1")
+
+			h_conv1 = tf.nn.relu(self.conv2d(x, W_conv1) + b_conv1)
+			h_pool1 = self.max_pool_2x2(h_conv1)
+
+			#Second Convolutional Layer
+			W_conv2 = self.get_variable(name="w",scope="conv2")
+			b_conv2 = self.get_variable(name="b",scope="conv2")
+
+			h_conv2 = tf.nn.relu(self.conv2d(h_pool1, W_conv2) + b_conv2)
+			h_pool2 = self.max_pool_2x2(h_conv2)
+			h_pool2_flat = tf.reshape(h_pool2, [-1, 15*15*64])
+
+			for layer in range(1, den_layers+1):
+				for t in range(1, task_id):
+					if t==1:
+						w_fc = self.get_variable(name="w_"+str(t),scope="l"+str(layer))
+						b_fc = self.get_variable(name="b_"+str(t),scope="l"+str(layer))
+					else:
+						w_fc = tf.concat([w_fc, self.get_variable(name="w_"+str(t),scope="l"+str(layer))], 1)
+						b_fc = tf.concat([b_fc, self.get_variable(name="b_"+str(t),scope="l"+str(layer))], 0)
+						
+				w_expand = self.get_variable(name="w_"+str(task_id),shape=[w_fc.get_shape().as_list()[0], self.k_ex], scope="l"+str(layer))
+				b_expand = self.get_variable(name="b_"+str(task_id),shape=[self.k_ex], scope="l"+str(layer))
+				self.params[w_expand.name] = w_expand
+				self.params[b_expand.name] = b_expand
+				w_expanded = tf.concat([w_fc,task_expand],1)
+				b_expanded = tf.concat([b_fc,task_expand],0)
 
 		elif splitting:
 
 		else:
 
+			#First Convolutional layers
+			W_conv1 = self.get_variable(name="w",shape=[5, 5, 3, 32],scope="conv1")
+			b_conv1 = self.get_variable(name="b",shape=[32],scope="conv1")
+
+			h_conv1 = tf.nn.relu(self.conv2d(x, W_conv1) + b_conv1)
+			h_pool1 = self.max_pool_2x2(h_conv1)
+
+			#Second Convolutional Layer
+			W_conv2 = self.get_variable(name="w",shape=[5, 5, 32, 64],scope="conv2")
+			b_conv2 = self.get_variable(name="b",shape=[64],scope="conv2")
+
+			h_conv2 = tf.nn.relu(self.conv2d(h_pool1, W_conv2) + b_conv2)
+			h_pool2 = self.max_pool_2x2(h_conv2)
+			h_pool2_flat = tf.reshape(h_pool2, [-1, 15*15*64])
+
 			#flattened first fc layer
 			W_fc1 = self.get_variable(name="w_"+str(task_id), shape=[15 * 15 * 64, 1024], scope="l1")   # layer-1 outgoing weight matrix
 			b_fc1 = self.get_variable(name="b_"+str(task_id), shape=[1024], scope="l1")
 
-			h_fc1 = tf.nn.relu(tf.matmul(self.h_pool2_flat, W_fc1) + b_fc1)
+			h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
 			#Dropout Layer
 			h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
@@ -153,8 +195,8 @@ class DEN():
 			h_fc2 = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
 
 			# readout fc layer
-			W_fc3 = self.get_variable(name="w_"+str(task_id), shape=[128, 2], scope="l3")     # layer-3 outgoing weight matrix 
-			b_fc3 = self.get_variable(name="b_"+str(task_id), shape=[2], scope="l3")
+			W_fc3 = self.get_variable(name="w_"+str(task_id), shape=[128, output_len], scope="l3")     # layer-3 outgoing weight matrix 
+			b_fc3 = self.get_variable(name="b_"+str(task_id), shape=[output_len], scope="l3")
 
 			y_conv = tf.matmul(h_fc2, W_fc3) + b_fc3
 
@@ -169,7 +211,7 @@ class DEN():
 		accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
 		task_train_labels = tf.one_hot(indices=self.train_labels, depth=self.last_label_index+1)
-		task_test_labels = tf.one_hot(indices=self.test_labels, depth=len(label_names))					
+		task_test_labels = tf.one_hot(indices=self.test_labels, depth=len(label_names))                 
 
 		dataset = tf.data.Dataset.from_tensor_slices((self.train, task_train_labels))
 		dataset = dataset.shuffle(len(task_train_labels)).repeat().batch(batch_size)
@@ -261,9 +303,6 @@ if __name__ == "__main__":
 	# cv.imshow("", train_data[512])
 	# cv.waitKey(0)
 
-	x = tf.placeholder(tf.float32, [None, 60, 60, 3])
-	y_ = tf.placeholder(tf.float32, [None, 2])
-	keep_prob = tf.placeholder(tf.float32)
 	y_conv = None
 	retraining = False
 	expansion = False
@@ -277,13 +316,12 @@ if __name__ == "__main__":
 		den.add_task(task_id, label_names)
 
 		if task_id == 1:
-			y_conv = den.build_model(task_id, x, keep_prob, retraining, expansion, splitting)
+			y_conv = den.build_model(task_id)
 			result = den.train_task(task_id, y_conv, y_, batch_size, epochs)
 		else:
 			retraining=True
 			expansion = False
 			splitting = False
-			den.destroy_graph()
 			y_conv = den.build_model(task_id, x, keep_prob, retraining, expansion, splitting, den.last_label_index+1)
 			result = den.train_task(task_id, y_conv, y_, batch_size, epochs)
 
