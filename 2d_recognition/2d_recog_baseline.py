@@ -17,6 +17,7 @@ class DEN():
 		self.train_labels = []
 		self.test = []
 		self.test_labels = []
+		self.selected = dict()
 		
 	def extract_data(self, filepath):
 		data = []
@@ -79,24 +80,18 @@ class DEN():
 
 
 	def get_variable(self, name=None, shape=None, scope=None, trainable=True):
-
-		if shape==None:
-			with tf.variable_scope(scope, reuse=True):
-				w = tf.get_variable(name, trainable=trainable)
-		else:
-			with tf.variable_scope(scope, reuse=False):
-				w = tf.get_variable(name, shape, trainable=trainable)
-
+		with tf.variable_scope(scope, reuse=tf.compat.v1.AUTO_REUSE):
+			w = tf.get_variable(name, shape=shape, trainable=trainable)
 		self.params[w.name] = w
 		return w
 
-	def restore_params(self, param_values, trainable):
+	def restore_params(self):
 		self.params = dict()
-		for scope_name, value in param_values.items():
+		for scope_name, value in self.param_values.items():
 			scope_name = scope_name.split(':')[0]
 			[scope, name] = scope_name.split('/')
 			with tf.variable_scope(scope):
-				w = tf.get_variable(name, initializer=param_values[scope_name], trainable=trainable)
+				w = tf.get_variable(name, initializer=self.param_values[scope_name], trainable=True)
 			self.params[w.name] = w
 
 	def get_params(self):
@@ -112,23 +107,25 @@ class DEN():
 		return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
 							strides=[1, 2, 2, 1], padding='SAME')
 
+	def perform_selection(task_id, param_values, output_len):
+		self.selected = dict()
+
 	def build_model(self, task_id, retraining=False, expansion=False, splitting=False, output_len=2):
 
 		# Note: scope and name values are only given to DEN layers, not for fixed sized layers.
 		
 		self.sess = tf.Session()
+		x = tf.placeholder(tf.float32, [None, 60, 60, 3])
+		y_ = tf.placeholder(tf.float32, [None, output_len])
+		keep_prob = tf.placeholder(tf.float32)	
 
 		if retraining:
+			
+			self.selected
+			    
 
-		if expansion:
+		elif expansion:
 
-			param_values = self.get_params()
-			self.destroy_graph()
-			self.restore_params(param_values=param_values, trainable=True)
-
-			x = tf.placeholder(tf.float32, [None, 60, 60, 3])
-			y_ = tf.placeholder(tf.float32, [None, output_len])
-			keep_prob = tf.placeholder(tf.float32)
 
 			W_conv1 = self.get_variable(name="w",scope="conv1")
 			b_conv1 = self.get_variable(name="b",scope="conv1")
@@ -269,7 +266,7 @@ if __name__ == "__main__":
 
 	if os.path.exists(np_train_path):
 
-		print("..........loading dataset from numpy files..........")
+		print("\n..........loading dataset from numpy files..........\n")
 
 		with gzip.GzipFile(np_train_path, "r") as f:
 			train_data = np.load(f)
@@ -282,7 +279,7 @@ if __name__ == "__main__":
 
 	else:
 
-		print("..........loading dataset from disk..........")
+		print("\n..........loading dataset from disk..........\n")
 		train_data, train_labels, label_names = den.extract_data(train_data_path)
 		test_data, test_labels, _ = den.extract_data(test_data_path)
 
@@ -304,35 +301,38 @@ if __name__ == "__main__":
 	# cv.waitKey(0)
 
 	y_conv = None
-	retraining = False
-	expansion = False
-	splitting = False
-	task_id = 0
 
-	while den.last_label_index != (len(label_names) - 1):        # Loop for adding new tasks (lifelong learning)
+	while den.last_label_index != (len(label_names) - 1):     # Loop for adding new tasks (lifelong learning)
 
 		task_id += 1
 		existing_model = y_conv
 		den.add_task(task_id, label_names)
+		param_values = dict()
 
 		if task_id == 1:
 			y_conv = den.build_model(task_id)
 			result = den.train_task(task_id, y_conv, y_, batch_size, epochs)
 		else:
-			retraining=True
-			expansion = False
-			splitting = False
-			y_conv = den.build_model(task_id, x, keep_prob, retraining, expansion, splitting, den.last_label_index+1)
+			param_values = den.get_params()              # Backing-up model weights that were trained upto prev task
+
+			print("--------Performing Selective Retraining---------")
+			
+			den.destroy_graph()
+			den.perform_selection(task_id=task_id, param_values=param_values, output_len=den.last_label_index+1)
+			y_conv = den.build_model(task_id, retraining=True, output_len=den.last_label_index+1)
 			result = den.train_task(task_id, y_conv, y_, batch_size, epochs)
 
 			if result == False:
-				retraining = False
-				expansion = True
-
-				y_conv = den.build_model(task_id, x, keep_prob, retraining, expansion, splitting, den.last_label_index+1)
+				print("--------Performing Network Expansion---------")
+				den.destroy_graph()
+				den.restore_params(param_values)        # Restoring model weights that were trained upto prev task
+				y_conv = den.build_model(task_id, expansion=True, output_len=den.last_label_index+1)
 				result = den.train_task(task_id, y_conv, y_, batch_size, epochs)
 
 				if result == False:
-					retraining = False
-					expansion = False
-					splitting = True
+					print("--------Performing Network Splitting---------")
+					den.destroy_graph()
+					den.restore_params(param_values)        # Restoring model weights that were trained upto prev task
+					y_conv = den.build_model(task_id, splitting=True, output_len=den.last_label_index+1)
+					result = den.train_task(task_id, y_conv, y_, batch_size, epochs)
+					print("Overall accuracy after learning task %d: %g"%(task_id, result))
