@@ -18,6 +18,8 @@ class DEN():
 		self.test = []
 		self.test_labels = []
 		self.selected = dict()
+		self.l1_mu = 0.001
+		self.l1_thr = 0.0001
 		
 	def extract_data(self, filepath):
 		data = []
@@ -77,6 +79,13 @@ class DEN():
 
 	def destroy_graph(self):
 		tf.reset_default_graph()
+		self.params = dict()
+
+	def initialize_parameters(self, output_len=2):
+		self.sess = tf.Session()
+		self.x = tf.placeholder(tf.float32, [None, 60, 60, 3])
+		self.y_ = tf.placeholder(tf.float32, [None, output_len])
+		# self.keep_prob = tf.placeholder(tf.float32)  			# dropout probability
 
 
 	def get_variable(self, name=None, shape=None, scope=None, trainable=True):
@@ -85,13 +94,17 @@ class DEN():
 		self.params[w.name] = w
 		return w
 
-	def restore_params(self):
+	def restore_params(self, retraining=False, trainable=True):
 		self.params = dict()
+		if retraining==True:
+			trainable = False
 		for scope_name, value in self.param_values.items():
 			scope_name = scope_name.split(':')[0]
 			[scope, name] = scope_name.split('/')
+			if retraining==True and scope=="l3":         # To make sure all layers except last are untrainable during selective retraining
+				trainable = True
 			with tf.variable_scope(scope):
-				w = tf.get_variable(name, initializer=self.param_values[scope_name], trainable=True)
+				w = tf.get_variable(name, initializer=value, trainable=trainable)
 			self.params[w.name] = w
 
 	def get_params(self):
@@ -108,21 +121,72 @@ class DEN():
 							strides=[1, 2, 2, 1], padding='SAME')
 
 	def perform_selection(task_id, param_values, output_len):
+
 		self.selected = dict()
+		
+		self.initialize_parameters(output_len)
+
+		self.restore_params(retraining=True, trainable=False)
+
+		W_conv1 = self.get_variable(name="w",scope="conv1")
+		b_conv1 = self.get_variable(name="b",scope="conv1")
+
+		h_conv1 = tf.nn.relu(self.conv2d(self.x, W_conv1) + b_conv1)
+		h_pool1 = self.max_pool_2x2(h_conv1)
+
+		#Second Convolutional Layer
+		W_conv2 = self.get_variable(name="w",scope="conv2")
+		b_conv2 = self.get_variable(name="b",scope="conv2")
+
+		h_conv2 = tf.nn.relu(self.conv2d(h_pool1, W_conv2) + b_conv2)
+		h_pool2 = self.max_pool_2x2(h_conv2)
+		h_pool2_flat = tf.reshape(h_pool2, [-1, 15*15*64])
+
+		for layer in range(1, self.den_layers+1):
+			w_fc = None
+			b_fc = None		
+
+			for t in range(1, task_id):
+				
+				#Collecting weights of each task from each layer, then concatenating them according to each layer
+				w_fc_task = self.get_variable(name="w_"+str(t),scope="l"+str(layer)) 
+				b_fc_task = self.get_variable(name="b_"+str(t),scope="l"+str(layer))
+
+				if w_fc!=None:
+					w_fc=tf.concat([w_fc, w_fc_task],1)
+					b_fc=tf.concat([b_fc, b_fc_task],0)
+				else:
+					w_fc = w_fc_task
+					b_fc = b_fc_task
+			
+			if layer == 1:
+				y_conv = tf.nn.relu(tf.matmul(h_pool2_flat, w_fc) + b_fc)
+
+			elif layer == 3:     # Adding new unit in output layer for the new task
+				w_new_out = self.get_variable(name="w_"+str(task_id),shape=[w_fc.get_shape().as_list()[0], 1], scope="l"+str(layer), trainable=True)
+				b_new_out = self.get_variable(name="b_"+str(task_id),shape=[1], scope="l"+str(layer), trainable=True)
+				self.params[w_new_out.name] = w_new_out
+				self.params[b_new_out.name] = b_new_out
+				w_fc = tf.concat([w_fc, w_new_out], 1)
+				b_fc = tf.concat([b_fc, b_new_out],0)
+				y_conv = tf.nn.relu(tf.matmul(y_conv, w_fc) + b_fc)
+
+			else:
+				y_conv = tf.nn.relu(tf.matmul(y_conv, w_fc) + b_fc)
+
+		result = self.train_model(task_id, y_conv, batch_size, epochs, selection=True)
+
 
 	def build_model(self, task_id, retraining=False, expansion=False, splitting=False, output_len=2):
 
 		# Note: scope and name values are only given to DEN layers, not for fixed sized layers.
 		
-		self.sess = tf.Session()
-		x = tf.placeholder(tf.float32, [None, 60, 60, 3])
-		y_ = tf.placeholder(tf.float32, [None, output_len])
-		keep_prob = tf.placeholder(tf.float32)	
+		self.initialize_parameters(output_len)
 
 		if retraining:
 			
 			self.selected
-			    
+				
 
 		elif expansion:
 
@@ -130,7 +194,7 @@ class DEN():
 			W_conv1 = self.get_variable(name="w",scope="conv1")
 			b_conv1 = self.get_variable(name="b",scope="conv1")
 
-			h_conv1 = tf.nn.relu(self.conv2d(x, W_conv1) + b_conv1)
+			h_conv1 = tf.nn.relu(self.conv2d(self.x, W_conv1) + b_conv1)
 			h_pool1 = self.max_pool_2x2(h_conv1)
 
 			#Second Convolutional Layer
@@ -141,7 +205,9 @@ class DEN():
 			h_pool2 = self.max_pool_2x2(h_conv2)
 			h_pool2_flat = tf.reshape(h_pool2, [-1, 15*15*64])
 
-			for layer in range(1, den_layers+1):
+			for layer in range(1, self.den_layers+1):
+				w_fc = None
+				b_fc = None
 				for t in range(1, task_id):
 					if t==1:
 						w_fc = self.get_variable(name="w_"+str(t),scope="l"+str(layer))
@@ -165,7 +231,7 @@ class DEN():
 			W_conv1 = self.get_variable(name="w",shape=[5, 5, 3, 32],scope="conv1")
 			b_conv1 = self.get_variable(name="b",shape=[32],scope="conv1")
 
-			h_conv1 = tf.nn.relu(self.conv2d(x, W_conv1) + b_conv1)
+			h_conv1 = tf.nn.relu(self.conv2d(self.x, W_conv1) + b_conv1)
 			h_pool1 = self.max_pool_2x2(h_conv1)
 
 			#Second Convolutional Layer
@@ -183,13 +249,13 @@ class DEN():
 			h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
 			#Dropout Layer
-			h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
+			# h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
 			#second fc layer
 			W_fc2 = self.get_variable(name="w_"+str(task_id), shape=[1024, 128], scope="l2")   # layer-2 outgoing weight matrix
 			b_fc2 = self.get_variable(name="b_"+str(task_id), shape=[128], scope="l2")
 
-			h_fc2 = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
+			h_fc2 = tf.matmul(h_fc1, W_fc2) + b_fc2
 
 			# readout fc layer
 			W_fc3 = self.get_variable(name="w_"+str(task_id), shape=[128, output_len], scope="l3")     # layer-3 outgoing weight matrix 
@@ -199,13 +265,49 @@ class DEN():
 
 			return y_conv
 
-	def train_task(self, task_id, y_conv, y_, batch_size, epochs):
+	def train_task(self, task_id, y_conv, batch_size, epochs, selection=False):
 
-		cross_entropy = tf.reduce_mean(
-			tf.nn.softmax_cross_entropy_with_logits_v2(labels=y_, logits=y_conv))
-		train_model = tf.train.AdamOptimizer(1e-5).minimize(cross_entropy)
-		correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
+		l1_regular = 0
+		train_var = []
+		l1_op_list = []
+
+		if selection == True:
+			loss = tf.reduce_mean(
+			tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.y_, logits=y_conv))
+			
+			for var in tf.trainable_variables():
+				l1_regular = l1_regular + tf.nn.l1_loss(var)
+				train_var.append(var)
+			loss = tf.reduce_mean(loss + l1_mu * l1_regular)
+
+		else:
+
+			loss = tf.reduce_mean(
+				tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.y_, logits=y_conv))
+			train_model = tf.train.AdamOptimizer(1e-5).minimize(loss)
+			correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(self.y_,1))
+			accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+		opt = tf.train.AdamOptimizer(1e-5)
+		grads = opt.compute_gradients(loss, train_var)
+		apply_grads = opt.apply_gradients(grads)
+
+		correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(self.y_,1))
 		accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+		with tf.control_dependencies([apply_grads]):
+			for var in train_var:
+
+				#### TODO: Remove conv layers here.........
+				th_t = tf.fill(tf.shape(var), tf.convert_to_tensor(self.l1_thr))
+				zero_t = tf.zeros(tf.shape(var))
+				var_temp = var - (th_t * tf.sign(var))
+				# [pseudo]:  if |var| < th_t: var = [0];  else: var = var_temp
+				l1_op = var.assign(tf.where(tf.less(tf.abs(var), th_t), zero_t, var_temp))
+				l1_op_list.append(l1_op)
+
+		with tf.control_dependencies(l1_op_list):
+			train_model = tf.no_op()
 
 		task_train_labels = tf.one_hot(indices=self.train_labels, depth=self.last_label_index+1)
 		task_test_labels = tf.one_hot(indices=self.test_labels, depth=len(label_names))                 
@@ -226,12 +328,12 @@ class DEN():
 
 			for j in range(int(len(self.train)/batch_size)):
 				x_batch , y_batch = self.sess.run([x_data,y_data])
-				self.sess.run(train_model, feed_dict={x: x_batch, y_: y_batch, keep_prob: 0.5})
+				self.sess.run(train_model, feed_dict={self.x: x_batch, self.y_: y_batch})
 			
-			train_accuracy = accuracy.eval(feed_dict={x: self.train, y_: task_train_labels, keep_prob: 1.0})
+			train_accuracy = accuracy.eval(feed_dict={self.x: self.train, self.y_: task_train_labels})
 			print("Epoch %d, training accuracy %g"%(i+1, train_accuracy))
 
-			test_accuracy = accuracy.eval(feed_dict={x: self.test, y_: task_test_labels, keep_prob: 1.0})
+			test_accuracy = accuracy.eval(feed_dict={self.x: self.test, self.y_: task_test_labels})
 			print("test accuracy: %g \n"%test_accuracy)
 
 			if test_accuracy >= 0.99:
@@ -311,7 +413,7 @@ if __name__ == "__main__":
 
 		if task_id == 1:
 			y_conv = den.build_model(task_id)
-			result = den.train_task(task_id, y_conv, y_, batch_size, epochs)
+			result = den.train_task(task_id, y_conv, batch_size, epochs)
 		else:
 			param_values = den.get_params()              # Backing-up model weights that were trained upto prev task
 
@@ -320,19 +422,19 @@ if __name__ == "__main__":
 			den.destroy_graph()
 			den.perform_selection(task_id=task_id, param_values=param_values, output_len=den.last_label_index+1)
 			y_conv = den.build_model(task_id, retraining=True, output_len=den.last_label_index+1)
-			result = den.train_task(task_id, y_conv, y_, batch_size, epochs)
+			result = den.train_task(task_id, y_conv, batch_size, epochs)
 
 			if result == False:
 				print("--------Performing Network Expansion---------")
 				den.destroy_graph()
 				den.restore_params(param_values)        # Restoring model weights that were trained upto prev task
 				y_conv = den.build_model(task_id, expansion=True, output_len=den.last_label_index+1)
-				result = den.train_task(task_id, y_conv, y_, batch_size, epochs)
+				result = den.train_task(task_id, y_conv, batch_size, epochs)
 
 				if result == False:
 					print("--------Performing Network Splitting---------")
 					den.destroy_graph()
 					den.restore_params(param_values)        # Restoring model weights that were trained upto prev task
 					y_conv = den.build_model(task_id, splitting=True, output_len=den.last_label_index+1)
-					result = den.train_task(task_id, y_conv, y_, batch_size, epochs)
-					print("Overall accuracy after learning task %d: %g"%(task_id, result))
+					result = den.train_task(task_id, y_conv, batch_size, epochs)
+					print("\n Overall accuracy after learning task %d: %g"%(task_id, result))
