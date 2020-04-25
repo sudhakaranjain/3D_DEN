@@ -19,7 +19,7 @@ class DEN():
 		self.test_labels = []
 		self.selected = dict()
 		self.l1_mu = 0.001
-		self.l1_thr = 0.0001
+		self.l1_thr = 0.001
 		
 	def extract_data(self, filepath):
 		data = []
@@ -208,21 +208,55 @@ class DEN():
 			for layer in range(1, self.den_layers+1):
 				w_fc = None
 				b_fc = None
-				for t in range(1, task_id):
-					if t==1:
-						w_fc = self.get_variable(name="w_"+str(t),scope="l"+str(layer))
-						b_fc = self.get_variable(name="b_"+str(t),scope="l"+str(layer))
-					else:
-						w_fc = tf.concat([w_fc, self.get_variable(name="w_"+str(t),scope="l"+str(layer))], 1)
-						b_fc = tf.concat([b_fc, self.get_variable(name="b_"+str(t),scope="l"+str(layer))], 0)
-						
-				w_expand = self.get_variable(name="w_"+str(task_id),shape=[w_fc.get_shape().as_list()[0], self.k_ex], scope="l"+str(layer))
-				b_expand = self.get_variable(name="b_"+str(task_id),shape=[self.k_ex], scope="l"+str(layer))
-				self.params[w_expand.name] = w_expand
-				self.params[b_expand.name] = b_expand
-				w_expanded = tf.concat([w_fc,task_expand],1)
-				b_expanded = tf.concat([b_fc,task_expand],0)
 
+				if layer == 1:
+					for t in range(1, task_id):
+						if t==1:
+							w_fc = self.get_variable(name="w_"+str(t),scope="l"+str(layer))
+							b_fc = self.get_variable(name="b_"+str(t),scope="l"+str(layer))
+						else:
+							w_fc = tf.concat([w_fc, self.get_variable(name="w_"+str(t),scope="l"+str(layer))], 1)
+							b_fc = tf.concat([b_fc, self.get_variable(name="b_"+str(t),scope="l"+str(layer))], 0)
+
+					w_expand = self.get_variable(name="w_"+str(task_id),shape=[w_fc.get_shape().as_list()[0], self.k_ex], scope="l"+str(layer))
+					b_expand = self.get_variable(name="b_"+str(task_id),shape=[self.k_ex], scope="l"+str(layer))
+					self.params[w_expand.name] = w_expand
+					self.params[b_expand.name] = b_expand
+					w_expanded = tf.concat([w_fc,w_expand],1)
+					b_expanded = tf.concat([b_fc,b_expand],0)
+
+				elif layer == 3:
+
+				else:
+
+					for t in range(1, task_id):
+						if t==1:
+							w_fc = self.get_variable(name="w_"+str(t),scope="l"+str(layer))
+							b_fc = self.get_variable(name="b_"+str(t),scope="l"+str(layer))
+						else:
+							t_prev_dim = w_fc.get_shape().as_list()[0]
+							t_next_dim = w_fc.get_shape().as_list()[1]
+
+							dummy_w = tf.get_variable(name="w_n_"+str(t), shape=[self.k_ex, t_next_dim], 
+										initializer=tf.constant_initializer(0.0), scope="l"+str(layer), trainable=False)
+
+							w_fc = tf.concat([w_fc,dummy_w],0)
+
+							w_fc = tf.concat([w_fc, self.get_variable(name="w_"+str(t), scope="l"+str(layer))],1)
+
+					prev_dim = w_fc.get_shape().as_list()[0]
+					next_dim = w_fc.get_shape().as_list()[1]
+					dummy_w = tf.get_variable(name="w_n_"+str(task_id), shape=[self.k_ex, next_dim], 
+										initializer=tf.constant_initializer(0.0), scope="l"+str(layer), trainable=False)
+
+					w_fc = tf.concat([w_fc,dummy_w],0)
+
+					w_expand = self.get_variable(name="w_"+str(task_id), shape=[prev_dim + self.k_ex, self.k_ex], scope="l"+str(layer))
+					b_expand = self.get_variable(name="b_"+str(task_id), shape=[self.k_ex], scope="l"+str(layer))
+					w_expanded = tf.concat([w_fc,w_expand],1)
+					self.params[w_expand.name] = w_expand
+					self.params[b_expand.name] = b_expand
+					
 		elif splitting:
 
 		else:
@@ -271,12 +305,13 @@ class DEN():
 		train_var = []
 		l1_op_list = []
 
-		if selection == True:
+		if task_id == 1 or selection == True:
 			loss = tf.reduce_mean(
 			tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.y_, logits=y_conv))
 			
 			for var in tf.trainable_variables():
-				l1_regular = l1_regular + tf.nn.l1_loss(var)
+				if "conv" not in var.name:
+					l1_regular = l1_regular + tf.nn.l1_loss(var)
 				train_var.append(var)
 			loss = tf.reduce_mean(loss + l1_mu * l1_regular)
 
@@ -297,14 +332,13 @@ class DEN():
 
 		with tf.control_dependencies([apply_grads]):
 			for var in train_var:
-
-				#### TODO: Remove conv layers here.........
-				th_t = tf.fill(tf.shape(var), tf.convert_to_tensor(self.l1_thr))
-				zero_t = tf.zeros(tf.shape(var))
-				var_temp = var - (th_t * tf.sign(var))
-				# [pseudo]:  if |var| < th_t: var = [0];  else: var = var_temp
-				l1_op = var.assign(tf.where(tf.less(tf.abs(var), th_t), zero_t, var_temp))
-				l1_op_list.append(l1_op)
+				if "conv" not in var.name: 		# Creating sparse in the network but not involving conv layers
+					th_t = tf.fill(tf.shape(var), tf.convert_to_tensor(self.l1_thr))
+					zero_t = tf.zeros(tf.shape(var))
+					var_temp = var - (th_t * tf.sign(var))
+					# [pseudo]:  if |var| < th_t: var = [0];  else: var = var_temp
+					l1_op = var.assign(tf.where(tf.less(tf.abs(var), th_t), zero_t, var_temp))
+					l1_op_list.append(l1_op)
 
 		with tf.control_dependencies(l1_op_list):
 			train_model = tf.no_op()
@@ -424,17 +458,17 @@ if __name__ == "__main__":
 			y_conv = den.build_model(task_id, retraining=True, output_len=den.last_label_index+1)
 			result = den.train_task(task_id, y_conv, batch_size, epochs)
 
-			if result == False:
-				print("--------Performing Network Expansion---------")
-				den.destroy_graph()
-				den.restore_params(param_values)        # Restoring model weights that were trained upto prev task
-				y_conv = den.build_model(task_id, expansion=True, output_len=den.last_label_index+1)
-				result = den.train_task(task_id, y_conv, batch_size, epochs)
+			# if result == False:
+			# 	print("--------Performing Network Expansion---------")
+			# 	den.destroy_graph()
+			# 	den.restore_params(param_values)        # Restoring model weights that were trained upto prev task
+			# 	y_conv = den.build_model(task_id, expansion=True, output_len=den.last_label_index+1)
+			# 	result = den.train_task(task_id, y_conv, batch_size, epochs)
 
-				if result == False:
-					print("--------Performing Network Splitting---------")
-					den.destroy_graph()
-					den.restore_params(param_values)        # Restoring model weights that were trained upto prev task
-					y_conv = den.build_model(task_id, splitting=True, output_len=den.last_label_index+1)
-					result = den.train_task(task_id, y_conv, batch_size, epochs)
-					print("\n Overall accuracy after learning task %d: %g"%(task_id, result))
+			# 	if result == False:
+			# 		print("--------Performing Network Splitting---------")
+			# 		den.destroy_graph()
+			# 		den.restore_params(param_values)        # Restoring model weights that were trained upto prev task
+			# 		y_conv = den.build_model(task_id, splitting=True, output_len=den.last_label_index+1)
+			# 		result = den.train_task(task_id, y_conv, batch_size, epochs)
+			# 		print("\n Overall accuracy after learning task %d: %g"%(task_id, result))
