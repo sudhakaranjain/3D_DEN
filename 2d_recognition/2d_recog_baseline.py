@@ -94,16 +94,16 @@ class DEN():
 		self.params[w.name] = w
 		return w
 
-	def restore_params(self, retraining=False, trainable=True):
+	def restore_params(self, retraining=False, trainable=True, param_values=dict()):
 		self.params = dict()
 		if retraining==True:
 			trainable = False
-		for scope_name, value in self.param_values.items():
+		for scope_name, value in param_values.items():
 			scope_name = scope_name.split(':')[0]
 			[scope, name] = scope_name.split('/')
 			if retraining==True and scope=="l3":         # To make sure all layers except last are untrainable during selective retraining
 				trainable = True
-			with tf.variable_scope(scope):
+			with tf.variable_scope(scope, reuse=False):
 				w = tf.get_variable(name, initializer=value, trainable=trainable)
 			self.params[w.name] = w
 
@@ -126,7 +126,7 @@ class DEN():
 		
 		self.initialize_parameters(output_len)
 
-		self.restore_params(retraining=True, trainable=False)
+		self.restore_params(retraining=True, trainable=False, param_values=param_values)
 
 		W_conv1 = self.get_variable(name="w",scope="conv1")
 		b_conv1 = self.get_variable(name="b",scope="conv1")
@@ -146,35 +146,78 @@ class DEN():
 			w_fc = None
 			b_fc = None		
 
-			for t in range(1, task_id):
-				
-				#Collecting weights of each task from each layer, then concatenating them according to each layer
-				w_fc_task = self.get_variable(name="w_"+str(t),scope="l"+str(layer)) 
-				b_fc_task = self.get_variable(name="b_"+str(t),scope="l"+str(layer))
-
-				if w_fc!=None:
-					w_fc=tf.concat([w_fc, w_fc_task],1)
-					b_fc=tf.concat([b_fc, b_fc_task],0)
-				else:
-					w_fc = w_fc_task
-					b_fc = b_fc_task
-			
 			if layer == 1:
+
+				for t in range(1, task_id):
+					
+					#Collecting weights of each task from each layer, then concatenating them according to each layer
+					w_fc_task = self.get_variable(name="w_"+str(t),scope="l"+str(layer)) 
+					b_fc_task = self.get_variable(name="b_"+str(t),scope="l"+str(layer))
+
+					if w_fc!=None:
+						w_fc=tf.concat([w_fc, w_fc_task],1)
+						b_fc=tf.concat([b_fc, b_fc_task],0)
+					else:
+						w_fc = w_fc_task
+						b_fc = b_fc_task
+				
 				y_conv = tf.nn.relu(tf.matmul(h_pool2_flat, w_fc) + b_fc)
 
-			elif layer == 3:     # Adding new unit in output layer for the new task
-				w_new_out = self.get_variable(name="w_"+str(task_id),shape=[w_fc.get_shape().as_list()[0], 1], scope="l"+str(layer), trainable=True)
-				b_new_out = self.get_variable(name="b_"+str(task_id),shape=[1], scope="l"+str(layer), trainable=True)
+			elif layer == self.den_layers:
+
+				for t in range(1, task_id):
+					if t==1:
+						w_fc = self.get_variable(name="w_"+str(t),scope="l"+str(layer))
+						b_fc = self.get_variable(name="b_"+str(t),scope="l"+str(layer))
+					else:
+						t_prev_dim = w_fc.get_shape().as_list()[0]		# task specific prev layer dim
+						t_next_dim = w_fc.get_shape().as_list()[1]		# task specific curr layer dim
+
+						dummy_w = tf.get_variable(name="w_n_"+str(t), shape=[self.k_ex, t_next_dim], 
+									initializer=tf.constant_initializer(0.0), scope="l"+str(layer), trainable=False)
+
+						w_fc = tf.concat([w_fc,dummy_w],0)
+
+						w_fc = tf.concat([w_fc, self.get_variable(name="w_"+str(t), scope="l"+str(layer))],1)
+
+				# Adding new unit in output layer for the new task
+				prev_dim = w_fc.get_shape().as_list()[0]
+				next_dim = w_fc.get_shape().as_list()[1]
+				w_new_out = self.get_variable(name="w_"+str(task_id), shape=[prev_dim, 1], scope="l"+str(layer))
+				b_new_out = self.get_variable(name="b_"+str(task_id), shape=[1], scope="l"+str(layer))
+				w_fc = tf.concat([w_fc, w_new_out],1)
+				b_fc = tf.concat([b_fc, b_new_out],0)
 				self.params[w_new_out.name] = w_new_out
 				self.params[b_new_out.name] = b_new_out
-				w_fc = tf.concat([w_fc, w_new_out], 1)
-				b_fc = tf.concat([b_fc, b_new_out],0)
+
 				y_conv = tf.nn.relu(tf.matmul(y_conv, w_fc) + b_fc)
+
+			else:
+
+				for t in range(1, task_id):
+					if t==1:
+						w_fc = self.get_variable(name="w_"+str(t),scope="l"+str(layer))
+						b_fc = self.get_variable(name="b_"+str(t),scope="l"+str(layer))
+					else:
+						t_prev_dim = w_fc.get_shape().as_list()[0]
+						t_next_dim = w_fc.get_shape().as_list()[1]
+
+						dummy_w = tf.get_variable(name="w_n_"+str(t), shape=[self.k_ex, t_next_dim], 
+									initializer=tf.constant_initializer(0.0), scope="l"+str(layer), trainable=False)
+
+						w_fc = tf.concat([w_fc,dummy_w],0)
+
+						w_fc = tf.concat([w_fc, self.get_variable(name="w_"+str(t), scope="l"+str(layer))],1)
 
 			else:
 				y_conv = tf.nn.relu(tf.matmul(y_conv, w_fc) + b_fc)
 
 		result = self.train_model(task_id, y_conv, batch_size, epochs, selection=True)
+
+		for layer in reversed(range(self.den_layers+1)):
+			if layer == self.den_layers:
+				
+									#--------------------------------- DOUBT --------------------------------------#
 
 
 	def build_model(self, task_id, retraining=False, expansion=False, splitting=False, output_len=2):
@@ -185,8 +228,19 @@ class DEN():
 
 		if retraining:
 			
-			self.selected
-				
+			W_conv1 = self.get_variable(name="w",scope="conv1")
+			b_conv1 = self.get_variable(name="b",scope="conv1")
+
+			h_conv1 = tf.nn.relu(self.conv2d(self.x, W_conv1) + b_conv1)
+			h_pool1 = self.max_pool_2x2(h_conv1)
+
+			#Second Convolutional Layer
+			W_conv2 = self.get_variable(name="w",scope="conv2")
+			b_conv2 = self.get_variable(name="b",scope="conv2")
+
+			h_conv2 = tf.nn.relu(self.conv2d(h_pool1, W_conv2) + b_conv2)
+			h_pool2 = self.max_pool_2x2(h_conv2)
+			h_pool2_flat = tf.reshape(h_pool2, [-1, 15*15*64])
 
 		elif expansion:
 
@@ -225,7 +279,7 @@ class DEN():
 					w_expanded = tf.concat([w_fc,w_expand],1)
 					b_expanded = tf.concat([b_fc,b_expand],0)
 
-				elif layer == 3:
+				elif layer == self.den_layers:
 
 				else:
 
@@ -344,7 +398,7 @@ class DEN():
 			train_model = tf.no_op()
 
 		task_train_labels = tf.one_hot(indices=self.train_labels, depth=self.last_label_index+1)
-		task_test_labels = tf.one_hot(indices=self.test_labels, depth=len(label_names))                 
+		task_test_labels = tf.one_hot(indices=self.test_labels, depth=self.last_label_index+1)                 
 
 		dataset = tf.data.Dataset.from_tensor_slices((self.train, task_train_labels))
 		dataset = dataset.shuffle(len(task_train_labels)).repeat().batch(batch_size)
@@ -461,14 +515,14 @@ if __name__ == "__main__":
 			# if result == False:
 			# 	print("--------Performing Network Expansion---------")
 			# 	den.destroy_graph()
-			# 	den.restore_params(param_values)        # Restoring model weights that were trained upto prev task
+			# 	den.restore_params(param_values=param_values)        # Restoring model weights that were trained upto prev task
 			# 	y_conv = den.build_model(task_id, expansion=True, output_len=den.last_label_index+1)
 			# 	result = den.train_task(task_id, y_conv, batch_size, epochs)
 
 			# 	if result == False:
 			# 		print("--------Performing Network Splitting---------")
 			# 		den.destroy_graph()
-			# 		den.restore_params(param_values)        # Restoring model weights that were trained upto prev task
+			# 		den.restore_params(param_values=param_values)        # Restoring model weights that were trained upto prev task
 			# 		y_conv = den.build_model(task_id, splitting=True, output_len=den.last_label_index+1)
 			# 		result = den.train_task(task_id, y_conv, batch_size, epochs)
 			# 		print("\n Overall accuracy after learning task %d: %g"%(task_id, result))
