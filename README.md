@@ -1,4 +1,4 @@
-# 3D_obj_recog
+# 3D_DEN
 M.Sc Thesis : Open-ended 3D Object Recognition using Dynamically Evolving Neural Networks
 
 # How to Run:
