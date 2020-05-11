@@ -157,71 +157,71 @@ class DEN():
 		# elif expansion:
 
 
-		# 	W_conv1 = self.get_variable(name="w",scope="conv1")
-		# 	b_conv1 = self.get_variable(name="b",scope="conv1")
+			W_conv1 = self.get_variable(name="w",scope="conv1")
+			b_conv1 = self.get_variable(name="b",scope="conv1")
 
-		# 	h_conv1 = tf.nn.relu(self.conv2d(self.x, W_conv1) + b_conv1)
-		# 	h_pool1 = self.max_pool_2x2(h_conv1)
+			h_conv1 = tf.nn.relu(self.conv2d(self.x, W_conv1) + b_conv1)
+			h_pool1 = self.max_pool_2x2(h_conv1)
 
-		# 	#Second Convolutional Layer
-		# 	W_conv2 = self.get_variable(name="w",scope="conv2")
-		# 	b_conv2 = self.get_variable(name="b",scope="conv2")
+			#Second Convolutional Layer
+			W_conv2 = self.get_variable(name="w",scope="conv2")
+			b_conv2 = self.get_variable(name="b",scope="conv2")
 
-		# 	h_conv2 = tf.nn.relu(self.conv2d(h_pool1, W_conv2) + b_conv2)
-		# 	h_pool2 = self.max_pool_2x2(h_conv2)
-		# 	h_pool2_flat = tf.reshape(h_pool2, [-1, 15*15*64])
+			h_conv2 = tf.nn.relu(self.conv2d(h_pool1, W_conv2) + b_conv2)
+			h_pool2 = self.max_pool_2x2(h_conv2)
+			h_pool2_flat = tf.reshape(h_pool2, [-1, 15*15*64])
 
-		# 	for layer in range(1, self.den_layers+1):
-		# 		w_fc = None
-		# 		b_fc = None
+			for layer in range(1, self.den_layers+1):
+				w_fc = None
+				b_fc = None
 
-		# 		if layer == 1:
-		# 			for t in range(1, task_id):
-		# 				if t==1:
-		# 					w_fc = self.get_variable(name="w_"+str(t),scope="l"+str(layer))
-		# 					b_fc = self.get_variable(name="b_"+str(t),scope="l"+str(layer))
-		# 				elif 'l%d/w_%d:0' % (layer,t) in self.params.keys():
-		# 					w_fc = tf.concat([w_fc, self.get_variable(name="w_"+str(t),scope="l"+str(layer))], 1)
-		# 					b_fc = tf.concat([b_fc, self.get_variable(name="b_"+str(t),scope="l"+str(layer))], 0)
+				if layer == 1:
+					for t in range(1, task_id):
+						if t==1:
+							w_fc = self.get_variable(name="w_"+str(t),scope="l"+str(layer))
+							b_fc = self.get_variable(name="b_"+str(t),scope="l"+str(layer))
+						elif 'l%d/w_%d:0' % (layer,t) in self.params.keys():
+							w_fc = tf.concat([w_fc, self.get_variable(name="w_"+str(t),scope="l"+str(layer))], 1)
+							b_fc = tf.concat([b_fc, self.get_variable(name="b_"+str(t),scope="l"+str(layer))], 0)
 
-		# 			w_expand = self.get_variable(name="w_"+str(task_id),shape=[w_fc.get_shape().as_list()[0], self.k_ex], scope="l"+str(layer))
-		# 			b_expand = self.get_variable(name="b_"+str(task_id),shape=[self.k_ex], scope="l"+str(layer))
-		# 			self.params[w_expand.name] = w_expand
-		# 			self.params[b_expand.name] = b_expand
-		# 			w_expanded = tf.concat([w_fc,w_expand],1)
-		# 			b_expanded = tf.concat([b_fc,b_expand],0)
+					w_expand = self.get_variable(name="w_"+str(task_id),shape=[w_fc.get_shape().as_list()[0], self.k_ex], scope="l"+str(layer))
+					b_expand = self.get_variable(name="b_"+str(task_id),shape=[self.k_ex], scope="l"+str(layer))
+					self.params[w_expand.name] = w_expand
+					self.params[b_expand.name] = b_expand
+					w_expanded = tf.concat([w_fc,w_expand],1)
+					b_expanded = tf.concat([b_fc,b_expand],0)
 
-		# 		elif layer == self.den_layers:
+				elif layer == self.den_layers:
 
-		# 		else:
+				else:
 
-		# 			for t in range(1, task_id):
-		# 				if t==1:
-		# 					w_fc = self.get_variable(name="w_"+str(t),scope="l"+str(layer))
-		# 					b_fc = self.get_variable(name="b_"+str(t),scope="l"+str(layer))
-		# 				elif 'l%d/w_%d:0' % (layer,t) in self.params.keys()::
-		# 					t_prev_dim = w_fc.get_shape().as_list()[0]
-		# 					t_next_dim = w_fc.get_shape().as_list()[1]
+					for t in range(1, task_id):
+						if t==1:
+							w_fc = self.get_variable(name="w_"+str(t),scope="l"+str(layer))
+							b_fc = self.get_variable(name="b_"+str(t),scope="l"+str(layer))
+						elif 'l%d/w_%d:0' % (layer,t) in self.params.keys()::
+							t_prev_dim = w_fc.get_shape().as_list()[0]
+							t_next_dim = w_fc.get_shape().as_list()[1]
 
-		# 					dummy_w = tf.get_variable(name="w_n_"+str(t), shape=[self.k_ex, t_next_dim], 
-		# 								initializer=tf.constant_initializer(0.0), scope="l"+str(layer), trainable=False)
+							dummy_w = tf.get_variable(name="w_n_"+str(t), shape=[self.k_ex, t_next_dim], 
+										initializer=tf.constant_initializer(0.0), scope="l"+str(layer), trainable=False)
 
-		# 					w_fc = tf.concat([w_fc,dummy_w],0)
+							w_fc = tf.concat([w_fc,dummy_w],0)
 
-		# 					w_fc = tf.concat([w_fc, self.get_variable(name="w_"+str(t), scope="l"+str(layer))],1)
+							w_fc = tf.concat([w_fc, self.get_variable(name="w_"+str(t), scope="l"+str(layer))],1)
 
-		# 			prev_dim = w_fc.get_shape().as_list()[0]
-		# 			next_dim = w_fc.get_shape().as_list()[1]
-		# 			dummy_w = tf.get_variable(name="w_n_"+str(task_id), shape=[self.k_ex, next_dim], 
-		# 								initializer=tf.constant_initializer(0.0), scope="l"+str(layer), trainable=False)
+					prev_dim = w_fc.get_shape().as_list()[0]
+					next_dim = w_fc.get_shape().as_list()[1]
+					dummy_w = tf.get_variable(name="w_n_"+str(task_id), shape=[self.k_ex, next_dim], 
+										initializer=tf.constant_initializer(0.0), scope="l"+str(layer), trainable=False)
 
-		# 			w_fc = tf.concat([w_fc,dummy_w],0)
+					w_fc = tf.concat([w_fc,dummy_w],0)
 
-		# 			w_expand = self.get_variable(name="w_"+str(task_id), shape=[prev_dim + self.k_ex, self.k_ex], scope="l"+str(layer))
-		# 			b_expand = self.get_variable(name="b_"+str(task_id), shape=[self.k_ex], scope="l"+str(layer))
-		# 			w_expanded = tf.concat([w_fc,w_expand],1)
-		# 			self.params[w_expand.name] = w_expand
-		# 			self.params[b_expand.name] = b_expand
+					w_expand = self.get_variable(name="w_"+str(task_id), shape=[prev_dim + self.k_ex, self.k_ex], scope="l"+str(layer))
+					b_expand = self.get_variable(name="b_"+str(task_id), shape=[self.k_ex], scope="l"+str(layer))
+					w_expanded = tf.concat([w_fc,w_expand],1)
+					self.params[w_expand.name] = w_expand
+					self.params[b_expand.name] = b_expand
 					
 		# elif splitting:
 
