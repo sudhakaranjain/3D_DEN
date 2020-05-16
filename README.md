@@ -8,5 +8,5 @@ M.Sc Thesis : Open-ended 3D Object Recognition using Dynamically Evolving Neural
 
 # Contact: 
 Please use the following email addresses if you have questions or want to contribute to this project:
-Sudhakaran Jain: s.j.jain@student.rug.nl
-Hamidreza Kasaei: hamidreza.kasaei@rug.nl
+- Sudhakaran Jain: s.j.jain@student.rug.nl
+- Hamidreza Kasaei: hamidreza.kasaei@rug.nl
