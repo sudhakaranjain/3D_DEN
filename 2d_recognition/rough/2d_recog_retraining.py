@@ -12,7 +12,7 @@ import os
 import numpy as np
 
 
-# In[46]:
+# In[2]:
 
 
 class DEN():
@@ -30,9 +30,10 @@ class DEN():
         self.test = []
         self.test_labels = []
         self.selected = dict()
-        self.l2_mu = 0.05
-        self.lamba_regular = 0.9
+        self.l2_mu = 0.01
+        self.lamba_regular = 0.5
         self.l1_thr = 0.00001
+        self.loss_thr = 0.01
 
     def extract_data(self, filepath):
         data = []
@@ -100,21 +101,25 @@ class DEN():
         self.sess = tf.Session()
         self.x = tf.placeholder(tf.float32, [None, 60, 60, 3])
         self.y_ = tf.placeholder(tf.float32, [None, output_len])
-        # self.keep_prob = tf.placeholder(tf.float32)  			# dropout probability
+        # self.keep_prob = tf.placeholder(tf.float32)          # dropout probability
 
     def create_variable(self, name=None, shape=None, scope=None, trainable=True):
         with tf.variable_scope(scope, reuse=False):
-            w = tf.get_variable(name, shape=shape, trainable=trainable)
-        self.params[w.name] = w
+            w = tf.get_variable(name, shape=shape, 
+#                                 initializer=tf.random_normal_initializer(mean=0, stddev=1, seed=3),
+                                trainable=trainable)
+            if "ex" not in name:
+                self.params[w.name] = w
         return w
 
     def get_variable(self, name=None, scope=None):
         with tf.variable_scope(scope, reuse=True):
             w = tf.get_variable(name)
-        self.params[w.name] = w
+            if "ex" not in name:
+                self.params[w.name] = w
         return w
 
-    def restore_params(self, trainable=True, param_values=dict()):
+    def restore_params(self, task_id=None, trainable=True, param_values=dict()):
         self.params = dict()
         self.prev_W = dict()
         for scope_name, value in param_values.items():
@@ -122,12 +127,11 @@ class DEN():
             scope_name = scope_name.split(':')[0]
             [scope, name] = scope_name.split('/')
 
-#             if retraining == False:
-#                 train = False
-#             elif ('l%d' % den_layers in scope) or ("conv" in scope):
-#                 train = False
-#             else:
-#                 train = trainable
+            if task_id != None:
+                if 'l%d/w_%d' % (self.den_layers,task_id) in scope_name:
+                    trainable = True
+                else:
+                    trainable = False
 
             with tf.variable_scope(scope, reuse=False):
                 w = tf.get_variable(name, initializer=value, trainable=trainable)
@@ -147,7 +151,7 @@ class DEN():
                             strides=[1, 2, 2, 1], padding='SAME')
 
 
-    def build_model(self, task_id, retraining=False, expansion=False, splitting=False, prediction=False, output_len=2):
+    def build_model(self, task_id, expansion=False, output_len=2):
 
         # Note: scope and name values are only given to DEN layers, not for fixed sized layers.
 
@@ -186,7 +190,74 @@ class DEN():
             self.w_fc = self.create_variable(name="w", shape=[128, output_len], scope="l3")     # layer-3 outgoing weight matrix 
             self.b_fc = self.create_variable(name="b", shape=[output_len], scope="l3")
             y_conv = tf.matmul(self.h_fc2, self.w_fc) + self.b_fc
+            
+        elif expansion:
+            
+            #First Convolutional layers
+            W_conv1 = self.get_variable(name="w",scope="conv1")
+            b_conv1 = self.get_variable(name="b",scope="conv1")
 
+            h_conv1 = tf.nn.relu(self.conv2d(self.x, W_conv1) + b_conv1)
+            h_pool1 = self.max_pool_2x2(h_conv1)
+
+            #Second Convolutional Layer
+            W_conv2 = self.get_variable(name="w",scope="conv2")
+            b_conv2 = self.get_variable(name="b",scope="conv2")
+
+            h_conv2 = tf.nn.relu(self.conv2d(h_pool1, W_conv2) + b_conv2)
+            h_pool2 = self.max_pool_2x2(h_conv2)
+            self.h_pool2_flat = tf.reshape(h_pool2, [-1, 15*15*64])
+
+            # fc layer expansion
+            for layer in range(1, self.den_layers+1):
+
+                if layer == 1:
+                    w_fc1 = self.get_variable(name="w", scope="l%d"%layer)
+                    b_fc1 = self.get_variable(name="b", scope="l%d"%layer)
+
+                    w_expand = self.create_variable(name="w_ex_"+str(task_id),shape=[w_fc1.get_shape().as_list()[0], self.k_ex], scope="l"+str(layer))
+                    b_expand = self.create_variable(name="b_ex_"+str(task_id),shape=[self.k_ex], scope="l%d"%layer)
+                    w_expanded = tf.concat([w_fc1,w_expand],1)
+                    b_expanded = tf.concat([b_fc1,b_expand],0)
+                    self.params[w_fc1.name] = w_expanded
+                    self.params[b_fc1.name] = b_expanded
+                    h_fc1 = tf.nn.relu(tf.matmul(self.h_pool2_flat, w_expanded) + b_expanded)
+
+                elif layer == self.den_layers:
+                    w_fc3 = self.get_variable(name="w_%d"%task_id,scope="l%d"%layer)
+                    b_fc3 = self.get_variable(name="b_%d"%task_id,scope="l%d"%layer)
+                    
+                    prev_dim = w_fc3.get_shape().as_list()[0]
+                    next_dim = w_fc3.get_shape().as_list()[1]
+
+                    w_expand = self.create_variable(name="w_ex_"+str(task_id), shape=[prev_dim + self.k_ex, next_dim], scope="l%d"%layer)
+                    
+                    w_expanded = tf.concat([w_fc3, w_expand], 0)
+                    
+                    self.params[w_fc3.name] = w_expanded
+                    y_conv = tf.matmul(self.h_fc2, w_expanded) + b_fc3
+
+                else:
+                    w_fc2 = self.get_variable(name="w",scope="l%d"%layer)
+                    b_fc2 = self.get_variable(name="b",scope="l%d"%layer)
+                    prev_dim = w_fc2.get_shape().as_list()[0]
+                    next_dim = w_fc2.get_shape().as_list()[1]
+
+                    dummy_w = tf.get_variable(name="w_ex_d_"+str(task_id), shape=[self.k_ex, next_dim], 
+                                initializer=tf.constant_initializer(0.0), scope="l%d"%layer, trainable=False)
+
+                    w_expand = self.create_variable(name="w_ex_"+str(task_id), shape=[prev_dim + self.k_ex, self.k_ex], scope="l%d"%layer)
+                    b_expand = self.create_variable(name="b_ex_"+str(task_id), shape=[self.k_ex], scope="l%d"%layer)
+                    
+                    w_fc2 = tf.concat([w_fc2, dummy_w],0)
+                    
+                    w_expanded = tf.concat([w_fc2, w_expand], 1)
+                    b_expanded = tf.concat([b_fc2, b_expand], 0)
+                    
+                    self.params[w_fc2.name] = w_expanded
+                    self.params[b_fc2.name] = b_expanded
+                    self.h_fc2 = tf.nn.relu(tf.matmul(h_fc1, w_expanded) + b_expanded)
+                    
         else:
 
             #First Convolutional layers
@@ -220,7 +291,7 @@ class DEN():
             self.b_fc = self.create_variable(name="b_"+str(task_id), shape=[output_len], scope="l3", trainable=True)
             y_conv = tf.matmul(self.h_fc2, self.w_fc) + self.b_fc
 
-        y_conv = tf.nn.sigmoid(y_conv)
+#         y_conv = tf.nn.sigmoid(y_conv)
         return y_conv
     
     def perform_selection(self, task_id, values_dict):      # Breadth first search for selecting non-zero units
@@ -299,7 +370,7 @@ class DEN():
                                 initializer=selected['l%d/b_%d:0' % (self.den_layers, task_id)], trainable=True)
 
         y_conv = tf.matmul(h, w) + b
-        y_conv = tf.nn.sigmoid(y_conv)
+#         y_conv = tf.nn.sigmoid(y_conv)
         return y_conv
 
     def optimization(self, prev_W=None):
@@ -308,24 +379,25 @@ class DEN():
         train_var = []
         regular_terms = []
         
-        loss = tf.reduce_mean(
+        self.loss = tf.reduce_mean(
         tf.nn.sigmoid_cross_entropy_with_logits(labels=self.y_, logits=y_conv))
 
         for var in tf.trainable_variables():
             l2_regular = l2_regular + tf.nn.l2_loss(var)
             train_var.append(var)
+#         print(len(train_var))
 
-        loss = loss + tf.reduce_mean(self.l2_mu * l2_regular)
+        self.loss = self.loss + tf.reduce_mean(self.l2_mu * l2_regular)
 
         if prev_W != None:
             for var in train_var:
                 if var.name in prev_W.keys():
                     prev_w = prev_W[var.name]
                     regular_terms.append(tf.nn.l2_loss(var - prev_w))
-            loss = loss + self.lamba_regular * tf.reduce_mean(regular_terms)
+            self.loss = self.loss + self.lamba_regular * tf.reduce_mean(regular_terms)
         
         opt = tf.train.AdamOptimizer(1e-5)
-        grads = opt.compute_gradients(loss, train_var)
+        grads = opt.compute_gradients(self.loss, train_var)
         apply_grads = opt.apply_gradients(grads)
 
         correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(self.y_,1))
@@ -363,11 +435,15 @@ class DEN():
         task_train_labels = self.sess.run(task_train_labels)
         count = 0
 
+#         for scope, ref in self.params.items():
+#             if "l2" in scope:
+#                 print(self.sess.run(ref))
+
         for i in range(epochs):
 
             for j in range(int(len(self.train)/batch_size)):
                 x_batch , y_batch = self.sess.run([x_data,y_data])
-                self.sess.run(self.train_model, feed_dict={self.x: x_batch, self.y_: y_batch})
+                _, loss = self.sess.run([self.train_model, self.loss], feed_dict={self.x: x_batch, self.y_: y_batch})
 
             train_accuracy = self.acc_train.eval(session=self.sess, feed_dict={self.x: self.train, self.y_: task_train_labels})
             print("Epoch %d, training accuracy %g"%(i+1, train_accuracy))
@@ -378,6 +454,12 @@ class DEN():
                 if count > 2:
                     print("Best accuracy achieved! \n")
                     break
+        
+        for scope, ref in self.params.items():
+            if "l2" in scope:
+                print(self.sess.run(ref))
+        
+        return loss
     
     def predict(self, task_id, output_len=2):
 
@@ -425,9 +507,11 @@ class DEN():
         self.acc_test = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
         test_accuracy = self.acc_test.eval(session=self.sess, feed_dict={self.x: self.test, self.y_: task_test_labels})
         print("Overall accuracy: %g \n"%test_accuracy)
+#         print("\n y_final:")
+#         print(self.sess.run(y_final, feed_dict={self.x: self.test}))
 
 
-# In[49]:
+# In[3]:
 
 
 if __name__ == "__main__":
@@ -447,7 +531,7 @@ if __name__ == "__main__":
     np_label_name_path = '../Fruit_dataset/numpy_dataset/label_names.npy'
 
     batch_size = 10
-    epochs = 10
+    epochs = 5
     early_stop = 5
 
     den = DEN()
@@ -501,7 +585,7 @@ if __name__ == "__main__":
         if task_id == 1:
             y_conv = den.build_model(task_id=task_id)
             den.optimization()
-            den.train_task(task_id=task_id, batch_size=batch_size, epochs=epochs)
+            _ = den.train_task(task_id=task_id, batch_size=batch_size, epochs=epochs)
             params = den.get_params()
         else:
             print("-----------Started Selective Retraining-------------")
@@ -511,10 +595,8 @@ if __name__ == "__main__":
             den.optimization()
             
             print("---- Selecting nodes ----")
-            den.train_task(task_id=task_id, batch_size=batch_size, epochs=early_stop)
+            _ = den.train_task(task_id=task_id, batch_size=batch_size, epochs=early_stop)
             params = den.get_params()
-            
-            params_back = den.get_params()
             [selected, selected_prev, all_indices] = den.perform_selection(task_id=task_id, values_dict=params)
             den.destroy_graph()
             
@@ -522,31 +604,46 @@ if __name__ == "__main__":
             print("---- Retraining selected nodes ----")
             y_conv = den.build_SR(task_id=task_id, selected=selected, output_len=1) 
             den.optimization(prev_W=selected_prev) 
-            den.train_task(task_id=task_id, batch_size=batch_size, epochs=epochs)
+            loss = den.train_task(task_id=task_id, batch_size=batch_size, epochs=epochs)
             
-            #--------------Performing Union----------------
-            _vars = [(var.name, den.sess.run(var)) for var in tf.trainable_variables() if 'l' in var.name]
+            print("Loss: %f"%loss)
+            
+#             if loss < den.loss_thr:
+            if True:
+            
+                #--------------Performing Union----------------
+                _vars = [(var.name, den.sess.run(var)) for var in tf.trainable_variables() if 'l' in var.name]
 
-            for item in _vars:
-                key, values = item
-                selected[key] = values
+                for item in _vars:
+                    key, values = item
+                    selected[key] = values
 
-            for i in reversed(range(1, den.den_layers+1)):
-                if i == den.den_layers:
-                    temp_weight = params['l%d/w_%d:0' % (i, task_id)]
-                    temp_weight[np.ix_(all_indices['l%d' % i], [0])] =                         selected['l%d/w_%d:0' % (i, task_id)]
-                    params['l%d/w_%d:0' % (i, task_id)] = temp_weight
-                    params['l%d/b_%d:0' % (i, task_id)] =                         selected['l%d/b_%d:0' % (i, task_id)]
-                    # Updating output matrix structure
-                    params['l%d/w:0' % (i)] = np.concatenate([params['l%d/w:0' % (i)],params['l%d/w_%d:0' % (i,task_id)]], axis=1).tolist()
-                    params['l%d/b:0' % (i)] = np.concatenate([params['l%d/b:0' % (i)],params['l%d/b_%d:0' % (i,task_id)]], axis=0).tolist()
-                else:
-                    temp_weight = params['l%d/w:0' % i]
-                    temp_biases = params['l%d/b:0' % i]
-                    temp_weight[np.ix_(all_indices['l%d' % i], all_indices['l%d' % (i + 1)])] =                         selected['l%d/w:0' % i]
-                    temp_biases[all_indices['l%d' % (i + 1)]] =                         selected['l%d/b:0' % i]
-                    params['l%d/w:0' % i] = temp_weight
-                    params['l%d/b:0' % i] = temp_biases
+                for i in reversed(range(1, den.den_layers+1)):
+                    if i == den.den_layers:
+                        temp_weight = params['l%d/w_%d:0' % (i, task_id)]
+                        temp_weight[np.ix_(all_indices['l%d' % i], [0])] =                             selected['l%d/w_%d:0' % (i, task_id)]
+                        params['l%d/w_%d:0' % (i, task_id)] = temp_weight
+                        params['l%d/b_%d:0' % (i, task_id)] =                             selected['l%d/b_%d:0' % (i, task_id)]
+                        # Updating output matrix structure
+                        params['l%d/w:0' % (i)] = np.concatenate([params['l%d/w:0' % (i)],params['l%d/w_%d:0' % (i,task_id)]], axis=1).tolist()
+                        params['l%d/b:0' % (i)] = np.concatenate([params['l%d/b:0' % (i)],params['l%d/b_%d:0' % (i,task_id)]], axis=0).tolist()
+                    else:
+                        temp_weight = params['l%d/w:0' % i]
+                        temp_biases = params['l%d/b:0' % i]
+                        temp_weight[np.ix_(all_indices['l%d' % i], all_indices['l%d' % (i + 1)])] =                             selected['l%d/w:0' % i]
+                        temp_biases[all_indices['l%d' % (i + 1)]] =                             selected['l%d/b:0' % i]
+                        params['l%d/w:0' % i] = temp_weight
+                        params['l%d/b:0' % i] = temp_biases
+
+#             else:
+                
+#                 print("\n-----------Started Dynamic Expansion------------")
+#                 den.destroy_graph()
+#                 den.restore_params(task_id=task_id, trainable=False, param_values=params)
+#                 y_conv = den.build_model(task_id=task_id, expansion=True, output_len=1)
+#                 den.optimization()
+#                 _ = den.train_task(task_id=task_id, batch_size=batch_size, epochs=early_stop)
+#                 params = den.get_params()
 
         den.destroy_graph()
         den.restore_params(trainable=False, param_values=params)    # Freezes all learned weights
