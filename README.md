@@ -4,7 +4,8 @@ Major parent papers that inspired our work are : [DEN](https://openreview.net/pd
 
 # Requirements:
 - Python 3.6
-- Kindly create a virtual environment using requirements.txt file to run the code
+- Kindly create a virtual environment using requirements.txt file to run the code  
+- Note: For Offline Evaluation using GridSearch, use Tensorflow and Tensorboard version: 2.3.0
 
 # Contact: 
 Please use the following email addresses if you have questions or want to contribute to this project:
