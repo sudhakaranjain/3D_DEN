@@ -1,5 +1,6 @@
 # 3D_DEN
-M.Sc Thesis : Open-ended 3D Object Recognition using Dynamic Neural Architecture
+M.Sc Thesis : Open-ended 3D Object Recognition using Dynamically Expandable Networks  
+Major parent papers that inspired our work are : [DEN](https://openreview.net/pdf?id=Sk7KsfW0-) and [OrthographicNet](https://arxiv.org/pdf/1902.03057.pdf)
 
 # Requirements:
 - Python 3.6
