@@ -20,7 +20,7 @@ size_mobile = np.load("MobileNetV2/s_all.npy")
 size_vgg = np.load("VGG16/s_all.npy")
 size_custom = np.load("Custom/s_all.npy")
 
-fig, a = plt.subplots(3, 1)
+fig, a = plt.subplots(3, 1, figsize=(40, 20))
 
 # -------------------------- Accuracies ---------------------------
 
@@ -119,43 +119,47 @@ a[1].set_ylabel("Training Time (in sec)")
 
 # -------------------------- Layer Sizes ---------------------------
 
-s_mobile = [0] * len(size_mobile)
-for i in range(len(size_mobile)):
-	s = size_mobile[i]
-	s_mobile[i] = s[0] + s[1]
 
-s_mobile = np.array(s_mobile)
+s_mobile = [0] * len(size_mobile[0])
+for s in size_mobile:
+	for i in range(len(s)):
+		l = s[i]
+		s_mobile[i] = s_mobile[i] + l[0] + l[1]
 
-s_vgg = [0] * len(size_vgg)
-for i in range(len(size_vgg)):
-	s = size_vgg[i]
-	s_vgg[i] = s[0] + s[1]
+s_mobile = np.array(s_mobile) / 10.0
 
-s_vgg = np.array(s_vgg)
+s_vgg = [0] * len(size_vgg[0])
+for s in size_vgg:
+	for i in range(len(s)):
+		l = s[i]
+		s_vgg[i] = s_vgg[i] + l[0] + l[1]
 
-s_custom = [0] * len(size_custom)
-for i in range(len(size_custom)):
-	s = size_custom[i]
-	s_custom[i] = s[0] + s[1]
+s_vgg = np.array(s_vgg) / 10.0
 
-s_custom = np.array(s_custom)
+s_custom = [0] * len(size_custom[0])
+for s in size_custom:
+	for i in range(len(s)):
+		l = s[i]
+		s_custom[i] = s_custom[i] + l[0] + l[1]
 
-a[2].plot(trials, s_mobile, marker='s', linestyle='dashed')
-a[2].plot(trials, s_vgg, marker='*', linestyle='dashed')
-a[2].plot(trials, s_custom, marker='D', linestyle='dashed')
-# a[2].set_xlim(0,10)
-a[2].set_ylim(1300, 1800)
+s_custom = np.array(s_custom) / 10.0
+
+a[2].plot(tasks, s_mobile, marker='s', linestyle='dashed')
+a[2].plot(tasks, s_vgg, marker='*', linestyle='dashed')
+a[2].plot(tasks, s_custom, marker='D', linestyle='dashed')
+a[2].set_xlim(0,40)
+a[2].set_ylim(1100, 1800)
 # a[0].legend(["MobileNetV2", "VGG16", "Custom"])
 
 a[2].minorticks_on()
 
-a[2].set_xticks(np.arange(0, max(trials)+1, 1))
+# a[2].set_xticks(np.arange(0, max(tasks)+1, 1))
 # a[2].set_yticks(np.arange(0, 120, 10))
 # a[2].tick_params(labelsize='large')
 a[2].grid(b=True, which='major', color='#666666', linestyle='-')
 a[2].grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
 
-a[2].set_xlabel("Trials")
+a[2].set_xlabel("Tasks / Number of Categories")
 a[2].set_ylabel("Total Neurons in DEN layers")
 
 # plt.axis([0.0, 40, 0.7, 1])
