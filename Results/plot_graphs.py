@@ -31,6 +31,9 @@ for acc in acc_vgg:
 
 vgg = np.array(vgg) / 10.0
 
+apa_vgg = np.sum(vgg) / 40
+print("Avg. Per-Task Accuracy for VGG: ",apa_vgg)
+
 mobile = [0] * len(acc_mobile[0])
 for acc in acc_mobile:
 	for i in range(len(acc)):
@@ -38,12 +41,18 @@ for acc in acc_mobile:
 
 mobile = np.array(mobile) / 10.0
 
+apa_mobile = np.sum(mobile) / 40
+print("Avg. Per-Task Accuracy for MobileNetV2: ",apa_mobile)
+
 custom = [0] * len(acc_custom[0])
 for acc in acc_custom:
 	for i in range(len(acc)):
 		custom[i] = custom[i] + acc[i]
 
 custom = np.array(custom) / 10.0
+
+apa_custom = np.sum(custom) / 40
+print("Avg. Per-Task Accuracy for Custom Model: ",apa_custom)
 
 # print(s)
 
