@@ -1,6 +1,7 @@
 # 3D_DEN
 M.Sc Thesis : Open-ended 3D Object Recognition using Dynamically Expandable Networks  
-Major parent papers that inspired our work are : [DEN](https://openreview.net/pdf?id=Sk7KsfW0-) and [OrthographicNet](https://arxiv.org/pdf/1902.03057.pdf)
+Major parent papers that inspired our work are : [DEN](https://openreview.net/pdf?id=Sk7KsfW0-) and [OrthographicNet](https://arxiv.org/pdf/1902.03057.pdf)  
+A video demo using real-time robot can be found [here](https://youtu.be/tf4trRMyQ0Y).
 
 # Requirements:
 - Python 3.6
