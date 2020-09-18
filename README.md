@@ -8,7 +8,6 @@
 - Kindly create a virtual environment using requirements.txt file to run the code  
 - **Note:** For Offline Evaluation using GridSearch, use Tensorflow and Tensorboard version: 2.3.0.
 
-## Contact: 
-Please use the following email addresses if you have questions or want to contribute to this project:-
-- Sudhakaran Jain: s.j.jain@student.rug.nl 
-- Hamidreza Kasaei: hamidreza.kasaei@rug.nl
+## Authors: 
+[Sudhakaran Jain](https://sudhakaranjain.github.io/) and [Hamidreza Kasaei](https://hkasaei.github.io/)  
+Work done while at [RUG](https://www.rug.nl/).
