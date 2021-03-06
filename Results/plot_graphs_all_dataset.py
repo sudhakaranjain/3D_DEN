@@ -4,7 +4,7 @@ import cv2 as cv
 import gzip
 import matplotlib.pyplot as plt
 
-fig, a = plt.subplots(3, 2, figsize=(40, 20))
+fig, a = plt.subplots(2, 3, figsize=(40, 20))
 
 
 # ------------------------- ModelNet40 --------------------------
@@ -61,12 +61,11 @@ trials = [i+1 for i in range(10)]
 
 # axes= a[0].add_axes([0.1,0.1,0.8,0.4])
 
-a[0,0].plot(tasks, mobile, marker='s', linestyle='dashed')
+a[0,0].plot(tasks, mobile, marker='s', linestyle='dashed', ms=5)
 a[0,0].plot(tasks, vgg, marker='*', linestyle='dashed')
-a[0,0].plot(tasks, custom, marker='D', linestyle='dashed')
+a[0,0].plot(tasks, custom, marker='D', linestyle='dashed', ms=5)
 a[0,0].set_xlim(0,40)
 a[0,0].set_ylim(0.50,1.05)
-a[0,0].set_title('ModelNet40')
 a[0,0].legend(["MobileNetV2", "VGG16", "Custom"])
 
 a[0,0].minorticks_on()
@@ -80,6 +79,10 @@ a[0,0].grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
 a[0,0].set_xlabel("Tasks / Number of Categories")
 a[0,0].set_ylabel("Global Classification Accuracy")
 # plt.xticks(tasks, tasks, rotation='horizontal')
+
+# a[0,0].annotate('ModelNet40', xy=(0, 0.5), xytext=(-a[0,0].yaxis.labelpad - 5, 0), rotation=90,
+#                 xycoords=a[0,0].yaxis.label, textcoords='offset points',
+#                 size='large', ha='right', va='center')
 
 
 # -------- Training Time -----------
@@ -107,23 +110,27 @@ for acc in time_custom:
 
 t_custom = np.array(t_custom) / 10.0
 
-a[1,0].plot(tasks, t_mobile, marker='s', linestyle='dashed')
-a[1,0].plot(tasks, t_vgg, marker='*', linestyle='dashed')
-a[1,0].plot(tasks, t_custom, marker='D', linestyle='dashed')
-a[1,0].set_xlim(0,40)
+a[0,1].plot(tasks, t_mobile, marker='s', linestyle='dashed', ms=5)
+a[0,1].plot(tasks, t_vgg, marker='*', linestyle='dashed')
+a[0,1].plot(tasks, t_custom, marker='D', linestyle='dashed', ms=5)
+a[0,1].set_xlim(0,40)
 # a[1].set_ylim(0.0, 110, 10)
 # a[0].legend(["MobileNetV2", "VGG16", "Custom"])
 
-a[1,0].minorticks_on()
+a[0,1].minorticks_on()
 
 # a[1].set_xticks(np.arange(0, max(tasks)+1, 5))
 # a[1].set_yticks(np.arange(0, 120, 10))
 # a[1].tick_params(labelsize='large')
-a[1,0].grid(b=True, which='major', color='#666666', linestyle='-')
-a[1,0].grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
+a[0,1].grid(b=True, which='major', color='#666666', linestyle='-')
+a[0,1].grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
 
-a[1,0].set_xlabel("Tasks / Number of Categories")
-a[1,0].set_ylabel("Training Time (in sec)")
+a[0,1].set_xlabel("Tasks / Number of Categories")
+a[0,1].set_ylabel("Training Time (in sec)")
+
+a[0,1].annotate('ModelNet40', xy=(0.3, 1), xytext=(0, 310),
+                xycoords=a[0,1].xaxis.label, textcoords='offset points',
+                size='large', ha='left', va='center')
 
 
 # -------- Layer Sizes -----------
@@ -152,23 +159,23 @@ for s in size_custom:
 
 s_custom = np.array(s_custom) / 10.0
 
-a[2,0].plot(tasks, s_mobile, marker='s', linestyle='dashed')
-a[2,0].plot(tasks, s_vgg, marker='*', linestyle='dashed')
-a[2,0].plot(tasks, s_custom, marker='D', linestyle='dashed')
-a[2,0].set_xlim(0,40)
-a[2,0].set_ylim(1100, 1800)
+a[0,2].plot(tasks, s_mobile, marker='s', linestyle='dashed', ms=5)
+a[0,2].plot(tasks, s_vgg, marker='*', linestyle='dashed')
+a[0,2].plot(tasks, s_custom, marker='D', linestyle='dashed', ms=5)
+a[0,2].set_xlim(0,40)
+a[0,2].set_ylim(1100, 1800)
 # a[0].legend(["MobileNetV2", "VGG16", "Custom"])
 
-a[2,0].minorticks_on()
+a[0,2].minorticks_on()
 
 # a[2].set_xticks(np.arange(0, max(tasks)+1, 1))
 # a[2].set_yticks(np.arange(0, 120, 10))
 # a[2].tick_params(labelsize='large')
-a[2,0].grid(b=True, which='major', color='#666666', linestyle='-')
-a[2,0].grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
+a[0,2].grid(b=True, which='major', color='#666666', linestyle='-')
+a[0,2].grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
 
-a[2,0].set_xlabel("Tasks / Number of Categories")
-a[2,0].set_ylabel("Total Neurons in DEN layers")
+a[0,2].set_xlabel("Tasks / Number of Categories")
+a[0,2].set_ylabel("Total Neurons in DEN layers")
 
 
 
@@ -232,26 +239,24 @@ trials = [i+1 for i in range(10)]
 
 # axes= a[0].add_axes([0.1,0.1,0.8,0.4])
 
-a[0,1].plot(tasks, mobile, marker='s', linestyle='dashed')
-a[0,1].plot(tasks, vgg, marker='*', linestyle='dashed')
-a[0,1].plot(tasks, custom, marker='D', linestyle='dashed')
-a[0,1].set_xlim(0,51)
-a[0,1].set_ylim(0.20,1.05)
-a[0,1].set_title('RGB-D')
-a[0,1].legend(["MobileNetV2", "VGG16", "Custom"])
+a[1,0].plot(tasks, mobile, marker='s', linestyle='dashed', ms=5)
+a[1,0].plot(tasks, vgg, marker='*', linestyle='dashed')
+a[1,0].plot(tasks, custom, marker='D', linestyle='dashed', ms=5)
+a[1,0].set_xlim(0,51)
+a[1,0].set_ylim(0.20,1.05)
+# a[1,0].legend(["MobileNetV2", "VGG16", "Custom"])
 
-a[0,1].minorticks_on()
+a[1,0].minorticks_on()
 
 # plt.xticks(np.arange(0, max(tasks)+1, 5))
 # a[0].set_yticks(np.arange(0.50, 1.05, 0.05))
 # a[0].tick_params(labelsize='large')
-a[0,1].grid(b=True, which='major', color='#666666', linestyle='-')
-a[0,1].grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
+a[1,0].grid(b=True, which='major', color='#666666', linestyle='-')
+a[1,0].grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
 
-a[0,1].set_xlabel("Tasks / Number of Categories")
-# a[0,1].set_ylabel("Global Classification Accuracy")
+a[1,0].set_xlabel("Tasks / Number of Categories")
+a[1,0].set_ylabel("Global Classification Accuracy")
 # plt.xticks(tasks, tasks, rotation='horizontal')
-
 
 # -------- Training Time -----------
 
@@ -278,9 +283,9 @@ for acc in time_custom:
 
 t_custom = np.array(t_custom) / 10.0
 
-a[1,1].plot(tasks, t_mobile, marker='s', linestyle='dashed')
+a[1,1].plot(tasks, t_mobile, marker='s', linestyle='dashed', ms=5)
 a[1,1].plot(tasks, t_vgg, marker='*', linestyle='dashed')
-a[1,1].plot(tasks, t_custom, marker='D', linestyle='dashed')
+a[1,1].plot(tasks, t_custom, marker='D', linestyle='dashed', ms=5)
 a[1,1].set_xlim(0,51)
 # a[1].set_ylim(0.0, 110, 10)
 # a[0].legend(["MobileNetV2", "VGG16", "Custom"])
@@ -294,7 +299,12 @@ a[1,1].grid(b=True, which='major', color='#666666', linestyle='-')
 a[1,1].grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
 
 a[1,1].set_xlabel("Tasks / Number of Categories")
-# a[1,1].set_ylabel("Training Time (in sec)")
+a[1,1].set_ylabel("Training Time (in sec)")
+
+a[1,1].annotate('RGB-D', xy=(0.4, 1), xytext=(0, 310),
+                xycoords=a[1,1].xaxis.label, textcoords='offset points',
+                size='large', ha='left', va='center')
+
 
 
 # -------- Layer Sizes -----------
@@ -323,23 +333,25 @@ for s in size_custom:
 
 s_custom = np.array(s_custom) / 10.0
 
-a[2,1].plot(tasks, s_mobile, marker='s', linestyle='dashed')
-a[2,1].plot(tasks, s_vgg, marker='*', linestyle='dashed')
-a[2,1].plot(tasks, s_custom, marker='D', linestyle='dashed')
-a[2,1].set_xlim(0,51)
-a[2,1].set_ylim(1100, 1800)
+a[1,2].plot(tasks, s_mobile, marker='s', linestyle='dashed', ms=5)
+a[1,2].plot(tasks, s_vgg, marker='*', linestyle='dashed')
+a[1,2].plot(tasks, s_custom, marker='D', linestyle='dashed', ms=5)
+a[1,2].set_xlim(0,51)
+a[1,2].set_ylim(1100, 1800)
 # a[0].legend(["MobileNetV2", "VGG16", "Custom"])
 
-a[2,1].minorticks_on()
+a[1,2].minorticks_on()
 
 # a[2].set_xticks(np.arange(0, max(tasks)+1, 1))
 # a[2].set_yticks(np.arange(0, 120, 10))
 # a[2].tick_params(labelsize='large')
-a[2,1].grid(b=True, which='major', color='#666666', linestyle='-')
-a[2,1].grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
+a[1,2].grid(b=True, which='major', color='#666666', linestyle='-')
+a[1,2].grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
 
-a[2,1].set_xlabel("Tasks / Number of Categories")
-# a[2,1].set_ylabel("Total Neurons in DEN layers")
+a[1,2].set_xlabel("Tasks / Number of Categories")
+a[1,2].set_ylabel("Total Neurons in DEN layers")
 
 # plt.axis([0.0, 40, 0.7, 1])
+
+# fig.tight_layout()
 plt.show()
