@@ -1,7 +1,20 @@
 ## 3D_DEN: Open-ended 3D Object Recognition using Dynamically Expandable Networks
 ![alt text](model_arch.png)
   An overview of the proposed 3D_DEN model: Initially, three representative views are chosen from a set of multi-view images for a given 3D object.Then, each of them is converted to a single channel (grey-scale) image and later merged to form a 3-channel image. Now, this image is fed to a pre-trainednetwork, and the extracted features are flattened. Finally, we attach two DEN layers to the model which give the output.
-  
+
+[arXiv](https://arxiv.org/abs/2009.07213) | [Video](https://youtu.be/tf4trRMyQ0Y)
+
+If you use this work, please cite:
+
+```text
+@article{jain20203d_den,
+  title={3D\_DEN: Open-ended 3D Object Recognition using Dynamically Expandable Networks},
+  author={Jain, Sudhakaran and Kasaei, Hamidreza},
+  journal={arXiv preprint arXiv:2009.07213},
+  year={2020}
+}
+```
+
   
 ## 
 - This project hosts the code for our [**3D_DEN** paper](https://arxiv.org/pdf/2009.07213.pdf) and [report](https://fse.studenttheses.ub.rug.nl/23621/1/SJ_Graduation_Thesis_Final_submission.pdf)
