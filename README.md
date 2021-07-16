@@ -20,15 +20,16 @@ Latest version available on [arXiv](https://arxiv.org/abs/2009.07213) (March 202
 
 ![alt text](paper.png)
 
-Please adequately refer to the papers any time this code is being used. If you do publish a paper where 3D_DEN helped your research, we encourage you to cite the following paper in your publications:
+Please adequately refer to the paper any time this code is being used. If you do publish a paper where 3D_DEN helped your research, we encourage you to cite the following paper in your publications:
 
-```text
-@ARTICLE{9410594,
+```bib
+@ARTICLE{jain-3dden-2021,
   author={Jain, Sudhakaran and Kasaei, Hamidreza},
   journal={IEEE Transactions on Cognitive and Developmental Systems}, 
   title={3D_DEN: Open-ended 3D Object Recognition using Dynamically Expandable Networks}, 
   year={2021},
-  doi={10.1109/TCDS.2021.3075143}}
+  doi={10.1109/TCDS.2021.3075143}
+}
 ```
 
 ## Authors: 
